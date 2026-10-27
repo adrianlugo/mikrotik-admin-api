@@ -130,3 +130,39 @@ class MikroTikService:
             except Exception as e:
                 logger.error(f"Error eliminando usuario: {e}")
                 return {"status": "error", "message": str(e)}
+
+    def suspender_usuario_pppoe(self, usuario_pppoe, perfil_corte):
+        """Simula o aplica el cambio de perfil en MikroTik para cortar el servicio"""
+        if self.simulado:
+            print(f"\n[SIMULADOR MIKROTIK - {self.router.nombre}]")
+            print(f"-> ¡CORTE DE SERVICIO SOLICITADO!")
+            print(f"-> Comando enviado: /ppp/secret/set")
+            print(f"-> Parámetros: name={usuario_pppoe}, profile={perfil_corte}")
+            print(f"-> Comando enviado opcional: /ppp/active/remove (para desconectarlo y forzar el reconecte con la IP de corte)\n")
+            return {"status": "success", "message": "Usuario suspendido en MikroTik (Modo Simulación)"}
+        else:
+            try:
+                import routeros_api
+                connection = routeros_api.RouterOsApiConnection(
+                    self.router.ip_address, username=self.router.usuario, password=self.router.password, port=self.router.puerto_api
+                )
+                api = connection.get_api()
+                list_ppp = api.get_resource('/ppp/secret')
+                
+                # 1. Buscamos el registro para cambiar el perfil
+                user_record = list_ppp.get(name=usuario_pppoe)
+                if user_record:
+                    list_ppp.set(id=user_record['id'], profile=perfil_corte)
+                
+                # 2. Forzamos la desconexión si el usuario está en línea
+                # Al reconectarse, el MikroTik le dará la IP de navegación restringida
+                active_ppp = api.get_resource('/ppp/active')
+                active_record = active_ppp.get(name=usuario_pppoe)
+                if active_record:
+                    active_ppp.remove(id=active_record['id'])
+                    
+                connection.disconnect()
+                return {"status": "success", "message": "Usuario suspendido y removido de conexiones activas en MikroTik real"}
+            except Exception as e:
+                logger.error(f"Error aplicando suspensión: {e}")
+                return {"status": "error", "message": str(e)}

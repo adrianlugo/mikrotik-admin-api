@@ -4,12 +4,23 @@ from .models import ClientePPPoE
 from .serializers import ClientePPPoESerializer
 from .services import MikroTikService
 from rest_framework.decorators import action
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter
+
 
 
 class ClientePPPoEViewSet(viewsets.ModelViewSet):
     queryset = ClientePPPoE.objects.all()
     serializer_name = ClientePPPoESerializer
     serializer_class = ClientePPPoESerializer
+    # Activamos los backends de filtrado y búsqueda para esta vista
+    filter_backends = [DjangoFilterBackend, SearchFilter]
+    
+    # Filtros exactos (coincidencia perfecta)
+    filterset_fields = ['estado', 'router', 'plan']
+    
+    # Barra de búsqueda global (coincidencia parcial/por aproximación)
+    search_fields = ['usuario_pppoe', 'nombre_completo']
 
     @action(detail=False, methods=['get'], url_path='activos')
     def listar_activos(self, request):
@@ -96,4 +107,40 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
         return Response({
             "message": "Cliente eliminado localmente",
             "mikrotik_status": resultado
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='cambiar-estado')
+    def cambiar_estado(self, request, pk=None):
+        """Endpoint para suspender o reactivar un cliente manualmente"""
+        cliente = self.get_object()
+        nuevo_estado = request.data.get('estado') # Espera 'activo' o 'suspendido'
+        
+        if nuevo_estado not in ['activo', 'suspendido']:
+            return Response({"error": "Estado inválido. Use 'activo' o 'suspendido'."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        cliente.estado = nuevo_estado
+        cliente.save()
+        
+        mikrotik_service = MikroTikService(cliente.router)
+        
+        if nuevo_estado == 'suspendido':
+            # Asumimos que tienes un perfil en tu MikroTik llamado 'Perfil_Corte'
+            # En producción, podrías guardar este nombre en el modelo Router
+            resultado = mikrotik_service.suspender_usuario_pppoe(
+                usuario_pppoe=cliente.usuario_pppoe,
+                perfil_corte="Perfil_Corte"
+            )
+        else:
+            # Si se reactiva, le volvemos a poner su plan de velocidad original
+            resultado = mikrotik_service.actualizar_usuario_pppoe(
+                usuario_antiguo=cliente.usuario_pppoe,
+                nuevo_usuario=cliente.usuario_pppoe,
+                nuevo_password=cliente.password_pppoe,
+                nuevo_plan_perfil=cliente.plan.nombre_perfil
+            )
+            
+        return Response({
+            "message": f"Estado del cliente actualizado a {nuevo_estado}",
+            "mikrotik_status": resultado,
+            "cliente_estado": cliente.estado
         }, status=status.HTTP_200_OK)

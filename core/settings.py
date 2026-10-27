@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     # Librerías externas
     'rest_framework',
+    'django_filters',
     # Aplicaciones
     'api_mikrotik',
 ]
@@ -132,3 +133,10 @@ MAILERS = {
 
 # Activa el modo simulación para desarrollar sin un MikroTik físico conectado
 MIKROTIK_SIMULATION_MODE = True
+
+REST_FRAMEWORK = {
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.SearchFilter',
+    ],
+}
