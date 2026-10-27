@@ -38,3 +38,42 @@ class MikroTikService:
             except Exception as e:
                 logger.error(f"Error de conexión real con MikroTik: {e}")
                 return {"status": "error", "message": str(e)}
+
+    def obtener_conexiones_activas(self):
+        """Simula o lee las conexiones activas actuales de /ppp active"""
+        if self.simulado:
+            # Simulamos datos en tiempo real de clientes que están conectados
+            return [
+                {
+                    "name": "juan.perez",
+                    "service": "pppoe",
+                    "caller-id": "00:11:22:33:44:55", # Dirección MAC
+                    "address": "10.10.10.254",       # IP asignada
+                    "uptime": "02:45:10",            # Tiempo conectado
+                },
+                {
+                    "name": "maria.lopez",
+                    "service": "pppoe",
+                    "caller-id": "AA:BB:CC:DD:EE:FF",
+                    "address": "10.10.10.253",
+                    "uptime": "12:15:04",
+                }
+            ]
+        else:
+            # Lógica real para cuando conectes tu MikroTik CHR
+            try:
+                import routeros_api
+                connection = routeros_api.RouterOsApiConnection(
+                    self.router.ip_address,
+                    username=self.router.usuario,
+                    password=self.router.password,
+                    port=self.router.puerto_api
+                )
+                api = connection.get_api()
+                active_ppp = api.get_resource('/ppp/active')
+                datos = active_ppp.get()
+                connection.disconnect()
+                return datos
+            except Exception as e:
+                logger.error(f"Error leyendo usuarios activos: {e}")
+                return []

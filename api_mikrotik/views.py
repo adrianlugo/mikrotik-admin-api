@@ -3,11 +3,34 @@ from rest_framework.response import Response
 from .models import ClientePPPoE
 from .serializers import ClientePPPoESerializer
 from .services import MikroTikService
+from rest_framework.decorators import action
+
 
 class ClientePPPoEViewSet(viewsets.ModelViewSet):
     queryset = ClientePPPoE.objects.all()
     serializer_name = ClientePPPoESerializer
     serializer_class = ClientePPPoESerializer
+
+    @action(detail=False, methods=['get'], url_path='activos')
+    def listar_activos(self, request):
+        """Endpoint para consultar el estado en tiempo real del MikroTik"""
+        # Tomamos el primer router de la base de datos para la prueba
+        from .models import Router
+        router_principal = Router.objects.first()
+        
+        if not router_principal:
+            return Response({"error": "No hay ningún router registrado en el sistema"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Inicializamos el servicio y extraemos los usuarios conectados
+        mikrotik_service = MikroTikService(router_principal)
+        usuarios_activos = mikrotik_service.obtener_conexiones_activas()
+        
+        return Response({
+            "router": router_principal.nombre,
+            "total_conectados": len(usuarios_activos),
+            "conexiones": usuarios_activos
+        }, status=status.HTTP_200_OK)
+
 
     def create(self, request, *args, **kwargs):
         # 1. Validamos los datos recibidos mediante el serializador
