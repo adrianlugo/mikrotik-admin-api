@@ -129,3 +129,6 @@ MAILERS = {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
 }
+
+# Activa el modo simulación para desarrollar sin un MikroTik físico conectado
+MIKROTIK_SIMULATION_MODE = True
