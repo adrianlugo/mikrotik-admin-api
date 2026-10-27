@@ -77,3 +77,56 @@ class MikroTikService:
             except Exception as e:
                 logger.error(f"Error leyendo usuarios activos: {e}")
                 return []
+
+    def actualizar_usuario_pppoe(self, usuario_antiguo, nuevo_usuario, nuevo_password, nuevo_plan_perfil):
+        """Simula o ejecuta la actualización de un secreto PPPoE"""
+        if self.simulado:
+            print(f"\n[SIMULADOR MIKROTIK - {self.router.nombre}]")
+            print(f"-> Comando enviado: /ppp/secret/set (buscando usuario: {usuario_antiguo})")
+            print(f"-> Nuevos Parámetros: name={nuevo_usuario}, password={nuevo_password}, profile={nuevo_plan_perfil}\n")
+            return {"status": "success", "message": "Usuario actualizado correctamente (Modo Simulación)"}
+        else:
+            try:
+                import routeros_api
+                connection = routeros_api.RouterOsApiConnection(
+                    self.router.ip_address, username=self.router.usuario, password=self.router.password, port=self.router.puerto_api
+                )
+                api = connection.get_api()
+                list_ppp = api.get_resource('/ppp/secret')
+                
+                # Buscamos el ID interno en MikroTik usando el nombre antiguo
+                user_record = list_ppp.get(name=usuario_antiguo)
+                if user_record:
+                    list_ppp.set(id=user_record[0]['id'], name=nuevo_usuario, password=nuevo_password, profile=nuevo_plan_perfil)
+                
+                connection.disconnect()
+                return {"status": "success", "message": "Usuario modificado en MikroTik real"}
+            except Exception as e:
+                logger.error(f"Error modificando usuario: {e}")
+                return {"status": "error", "message": str(e)}
+
+    def eliminar_usuario_pppoe(self, usuario_pppoe):
+        """Simula o ejecuta la eliminación de un secreto PPPoE"""
+        if self.simulado:
+            print(f"\n[SIMULADOR MIKROTIK - {self.router.nombre}]")
+            print(f"-> Comando enviado: /ppp/secret/remove")
+            print(f"-> Parámetros: name={usuario_pppoe}\n")
+            return {"status": "success", "message": "Usuario eliminado correctamente (Modo Simulación)"}
+        else:
+            try:
+                import routeros_api
+                connection = routeros_api.RouterOsApiConnection(
+                    self.router.ip_address, username=self.router.usuario, password=self.router.password, port=self.router.puerto_api
+                )
+                api = connection.get_api()
+                list_ppp = api.get_resource('/ppp/secret')
+                
+                user_record = list_ppp.get(name=usuario_pppoe)
+                if user_record:
+                    list_ppp.remove(id=user_record[0]['id'])
+                    
+                connection.disconnect()
+                return {"status": "success", "message": "Usuario eliminado en MikroTik real"}
+            except Exception as e:
+                logger.error(f"Error eliminando usuario: {e}")
+                return {"status": "error", "message": str(e)}

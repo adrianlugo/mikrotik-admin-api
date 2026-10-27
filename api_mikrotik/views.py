@@ -59,3 +59,41 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
             "mikrotik_status": resultado
         }
         return Response(respuesta_final, status=status.HTTP_201_CREATED, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        # Tomamos el cliente actual antes de cambiarlo para conocer su usuario_pppoe antiguo
+        cliente = self.get_object()
+        usuario_antiguo = cliente.usuario_pppoe
+        # Validamos y guardamos los nuevos datos en Django
+        serializer = self.get_serializer(cliente, data=request.data, partial=kwargs.get('partial', False))
+        serializer.is_valid(raise_exception=True)
+        cliente_actualizado = serializer.save()
+        # Enviamos la actualización al MikroTik
+        mikrotik_service = MikroTikService(cliente_actualizado.router)
+        resultado = mikrotik_service.actualizar_usuario_pppoe(
+            usuario_antiguo=usuario_antiguo,
+            nuevo_usuario=cliente_actualizado.usuario_pppoe,
+            nuevo_password=cliente_actualizado.password_pppoe,
+            nuevo_plan_perfil=cliente_actualizado.plan.nombre_perfil
+        )
+        return Response({
+            "cliente": serializer.data,
+            "mikrotik_status": resultado
+        }, status=status.HTTP_200_OK)
+
+    def destroy(self, request, *args, **kwargs):
+        cliente = self.get_object()
+        usuario_pppoe = cliente.usuario_pppoe
+        router = cliente.router
+        
+        # Primero eliminamos del MikroTik
+        mikrotik_service = MikroTikService(router)
+        resultado = mikrotik_service.eliminar_usuario_pppoe(usuario_pppoe)
+        
+        # Luego lo borramos de la base de datos de Django
+        cliente.delete()
+        
+        return Response({
+            "message": "Cliente eliminado localmente",
+            "mikrotik_status": resultado
+        }, status=status.HTTP_200_OK)
