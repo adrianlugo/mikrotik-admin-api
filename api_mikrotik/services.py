@@ -168,7 +168,6 @@ class MikroTikService:
             active_ppp = api_instancia.get_resource('/ppp/active')
             active_record = [a for a in active_ppp.get() if a.get('name') == usuario_pppoe]
             if active_record:
-                # CORRECCIÓN: Uso correcto del índice [0]
                 active_ppp.remove(id=active_record[0]['.id'])
         except Exception as e:
             logger.warning(f"No se pudo forzar la desconexión del usuario {usuario_pppoe} (tal vez no estaba conectado): {e}")
