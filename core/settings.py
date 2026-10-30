@@ -40,11 +40,14 @@ INSTALLED_APPS = [
     # Librerías externas
     'rest_framework',
     'django_filters',
+    'drf_spectacular',
     # Aplicaciones
     'api_mikrotik',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -135,8 +138,29 @@ MAILERS = {
 MIKROTIK_SIMULATION_MODE = True
 
 REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
         'rest_framework.filters.SearchFilter',
     ],
 }
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'API de Gestión MikroTik ISP',
+    'DESCRIPTION': 'Sistema automatizado para la creación, suspensión y monitoreo en tiempo real de clientes PPPoE en routers MikroTik.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    # Esto ayuda a organizar visualmente los endpoints en Swagger
+    'SCHEMA_PATH_PREFIX': r'/api/v1/', 
+}
+
+# Permitir que tu frontend local consuma la API
+CORS_ALLOW_ALL_ORIGINS = True
+
+# Configura qué URLs web pueden hacer peticiones a tu API.
+# Si tu frontend web corre en el puerto 5500 (ej: Live Server de VSCode), pones ese:
+#CORS_ALLOWED_ORIGINS = [
+#    "http://localhost:5500",
+#    "http://127.0.0.1:5500",
+    # Si usas React/Vue/Vite usualmente es http://localhost:5173 o 3000
+#]

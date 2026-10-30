@@ -1,14 +1,48 @@
-from rest_framework import viewsets, status
+from django.utils.decorators import method_decorator
+from rest_framework import viewsets, status, serializers
 from rest_framework.response import Response
-from .models import ClientePPPoE
-from .serializers import ClientePPPoESerializer
-from .services import MikroTikService
 from rest_framework.decorators import action
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter
+from drf_spectacular.utils import extend_schema, inline_serializer, extend_schema_view
 
+from .models import ClientePPPoE
+from .serializers import ClientePPPoESerializer
+from .services import MikroTikService
 
-
+# 1. Agrupamos y describimos cada operación estándar de la base de datos
+@extend_schema_view(
+    list=extend_schema(
+        summary="Listar todos los clientes PPPoE",
+        description="Retorna la lista completa de clientes registrados en Django. Permite filtrar por estado, router y plan, o buscar por nombre.",
+        tags=['Clientes PPPoE']
+    ),
+    create=extend_schema(
+        summary="Crear un nuevo cliente PPPoE",
+        description="Registra al usuario en la base de datos local y, en simultáneo, lo da de alta de forma automática en el MikroTik configurado.",
+        tags=['Clientes PPPoE']
+    ),
+    retrieve=extend_schema(
+        summary="Obtener detalles de un cliente",
+        description="Recupera la información completa de un perfil de cliente PPPoE específico mediante su ID único.",
+        tags=['Clientes PPPoE']
+    ),
+    update=extend_schema(
+        summary="Actualizar cliente por completo",
+        description="Modifica todos los campos de un cliente (ej. cambio de credenciales o perfil de velocidad) e impacta los cambios inmediatamente en el MikroTik.",
+        tags=['Clientes PPPoE']
+    ),
+    partial_update=extend_schema(
+        summary="Actualizar campos específicos del cliente",
+        description="Permite realizar modificaciones parciales (ej. modificar solo la contraseña) sin necesidad de enviar todo el formulario.",
+        tags=['Clientes PPPoE']
+    ),
+    destroy=extend_schema(
+        summary="Eliminar un cliente del sistema",
+        description="Remueve el secreto PPPoE del router MikroTik en tiempo real y, posteriormente, elimina de forma permanente el registro en Django.",
+        tags=['Clientes PPPoE']
+    ),
+)
 class ClientePPPoEViewSet(viewsets.ModelViewSet):
     queryset = ClientePPPoE.objects.all()
     serializer_name = ClientePPPoESerializer
@@ -22,6 +56,19 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
     # Barra de búsqueda global (coincidencia parcial/por aproximación)
     search_fields = ['usuario_pppoe', 'nombre_completo']
 
+    @extend_schema(
+        summary="Listar usuarios activos en MikroTik",
+        description="Consulta mediante la API del MikroTik las conexiones activas en tiempo real del primer router configurado.",
+        responses={200: inline_serializer(
+            name='UsuariosActivosResponse',
+            fields={
+                'router': serializers.CharField(),
+                'total_conectados': serializers.IntegerField(),
+                'conexiones': serializers.ListField(child=serializers.CharField())
+            }
+        )},
+        tags=['Monitoreo MikroTik']
+    )
     @action(detail=False, methods=['get'], url_path='activos')
     def listar_activos(self, request):
         """Endpoint para consultar el estado en tiempo real del MikroTik"""
@@ -41,8 +88,8 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
             "total_conectados": len(usuarios_activos),
             "conexiones": usuarios_activos
         }, status=status.HTTP_200_OK)
-
-
+    
+    
     def create(self, request, *args, **kwargs):
         # 1. Validamos los datos recibidos mediante el serializador
         serializer = self.get_serializer(data=request.data)
@@ -109,6 +156,23 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
             "mikrotik_status": resultado
         }, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary="Cambiar estado del cliente (Suspender/Reactivar)",
+        description="Modifica el estado manual de un usuario PPPoE en Django y altera su perfil en el MikroTik (lo mueve al perfil de corte o le devuelve su plan contratado).",
+        request=inline_serializer(
+            name='CambiarEstadoRequest',
+            fields={'estado': serializers.ChoiceField(choices=['activo', 'suspendido'])}
+        ),
+        responses={200: inline_serializer(
+            name='CambiarEstadoResponse',
+            fields={
+                'message': serializers.CharField(),
+                'mikrotik_status': serializers.CharField(),
+                'cliente_estado': serializers.CharField()
+            }
+        )},
+        tags=['Clientes PPPoE']
+    )   
     @action(detail=True, methods=['post'], url_path='cambiar-estado')
     def cambiar_estado(self, request, pk=None):
         """Endpoint para suspender o reactivar un cliente manualmente"""
