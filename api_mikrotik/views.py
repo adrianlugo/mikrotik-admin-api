@@ -80,57 +80,6 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
             "conexiones": usuarios_activos
         }, status=status.HTTP_200_OK)
 
-    @extend_schema(
-        summary="Sincronizar con el primer router",
-        description="Sincroniza perfiles y secretos en ambos sentidos usando el primer router configurado. Se recomienda usar el endpoint específico por router.",
-        responses={200: inline_serializer(
-            name='SincronizacionClienteResponse',
-            fields={
-                'message': serializers.CharField(),
-                'details': serializers.DictField(),
-            },
-        )},
-        tags=['Sincronización MikroTik'],
-    )
-    @action(detail=False, methods=['post'], url_path='sincronizar')
-    def sincronizar(self, request):
-        """Sincroniza en las dos direcciones el primer router configurado."""
-        return self._ejecutar_sincronizacion()
-
-    @extend_schema(
-        summary="Importar datos desde MikroTik (compatible)",
-        description="Ruta antigua conservada por compatibilidad. Ejecuta la misma sincronización bidireccional que el endpoint sincronizar; se recomienda migrar a /api/routers/{id}/sincronizar/.",
-        responses={200: inline_serializer(
-            name='ImportacionMikrotikResponse',
-            fields={
-                'message': serializers.CharField(),
-                'details': serializers.DictField(),
-            },
-        )},
-        tags=['Sincronización MikroTik'],
-    )
-    @action(detail=False, methods=['post'], url_path='importar-desde-mikrotik')
-    def importar_desde_mikrotik(self, request):
-        """Ruta compatible con versiones anteriores; ejecuta sincronización bi-direccional."""
-        return self._ejecutar_sincronizacion()
-
-    def _ejecutar_sincronizacion(self):
-        router_principal = Router.objects.first()
-        
-        if not router_principal:
-            return Response({"error": "No hay ningún router registrado"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        mikrotik_service = MikroTikService(router_principal)
-        resultado = mikrotik_service.importar_secretos_hacia_django()
-        
-        if resultado.get("status") == "success":
-            return Response({
-                "message": resultado.get("message"),
-                "details": resultado.get("details", {}),
-            }, status=status.HTTP_200_OK)
-        return Response({"error": resultado.get("message")}, status=status.HTTP_502_BAD_GATEWAY)
-
-    
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)

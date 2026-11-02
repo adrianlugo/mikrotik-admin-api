@@ -3,10 +3,10 @@
 ## Endpoint
 
 ```http
-POST /api/clientes-pppoe/sincronizar/
+POST /api/routers/{id}/sincronizar/
 ```
 
-La ruta histórica `/api/clientes-pppoe/importar-desde-mikrotik/` se conserva por compatibilidad y ejecuta la misma operación. Para operaciones nuevas, preferir `/api/routers/{id}/sincronizar/`.
+Se retiraron las rutas históricas basadas en `/api/clientes-pppoe/`, porque ambas resolvían al primer router y podían sincronizar un equipo distinto al esperado. El flujo oficial usa `/api/routers/{id}/sincronizar/`, que identifica el router por su ID.
 
 ## Qué sincroniza
 
@@ -33,7 +33,7 @@ La operación compara los siguientes recursos de RouterOS con sus registros de D
 
 ## Reglas importantes
 
-- La sincronización utiliza el primer router registrado en Django.
+- La sincronización utiliza el router indicado en la URL `/api/routers/{id}/sincronizar/`.
 - Los registros no presentes en ambos sistemas se crean; esta operación no elimina automáticamente registros existentes.
 - Los nombres de usuarios se normalizan a minúsculas.
 - El usuario Django y el secreto RouterOS deben usar el mismo nombre para considerarse el mismo registro.

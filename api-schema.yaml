@@ -259,68 +259,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/UsuariosActivosResponse'
           description: ''
-  /api/clientes-pppoe/importar-desde-mikrotik/:
-    post:
-      operationId: clientes_pppoe_importar_desde_mikrotik_create
-      description: Ruta antigua conservada por compatibilidad. Ejecuta la misma sincronización
-        bidireccional que el endpoint sincronizar; se recomienda migrar a /api/routers/{id}/sincronizar/.
-      summary: Importar datos desde MikroTik (compatible)
-      tags:
-      - Sincronización MikroTik
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ClientePPPoE'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/ClientePPPoE'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/ClientePPPoE'
-        required: true
-      security:
-      - cookieAuth: []
-      - basicAuth: []
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ImportacionMikrotikResponse'
-          description: ''
-  /api/clientes-pppoe/sincronizar/:
-    post:
-      operationId: clientes_pppoe_sincronizar_create
-      description: Sincroniza perfiles y secretos en ambos sentidos usando el primer
-        router configurado. Se recomienda usar el endpoint específico por router.
-      summary: Sincronizar con el primer router
-      tags:
-      - Sincronización MikroTik
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ClientePPPoE'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/ClientePPPoE'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/ClientePPPoE'
-        required: true
-      security:
-      - cookieAuth: []
-      - basicAuth: []
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SincronizacionClienteResponse'
-          description: ''
   /api/clientes-red/:
     get:
       operationId: clientes_red_list
@@ -1214,17 +1152,6 @@ components:
       description: |-
         * `activo` - Activo
         * `suspendido` - Suspendido
-    ImportacionMikrotikResponse:
-      type: object
-      properties:
-        message:
-          type: string
-        details:
-          type: object
-          additionalProperties: {}
-      required:
-      - details
-      - message
     PatchedClientePPPoE:
       type: object
       properties:
@@ -1423,17 +1350,6 @@ components:
       - nombre
       - password
       - usuario
-    SincronizacionClienteResponse:
-      type: object
-      properties:
-        message:
-          type: string
-        details:
-          type: object
-          additionalProperties: {}
-      required:
-      - details
-      - message
     TipoEnum:
       enum:
       - dhcp

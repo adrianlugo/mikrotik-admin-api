@@ -81,8 +81,7 @@ python manage.py runserver
 | `DELETE` | `/api/clientes-pppoe/{id}/` | Elimina el secreto del router y luego elimina el cliente local si la operación tuvo éxito. |
 | `POST` | `/api/clientes-pppoe/{id}/cambiar-estado/` | Cambia entre `activo` y `suspendido`; el perfil de corte por ahora debe llamarse `Perfil_Corte`. |
 | `GET` | `/api/clientes-pppoe/activos/` | Lista nombres de usuarios con sesión PPP activa en el primer router configurado. |
-| `POST` | `/api/clientes-pppoe/sincronizar/` | Sincroniza usando el primer router. Se conserva por facilidad, pero el endpoint por router es preferible. |
-| `POST` | `/api/clientes-pppoe/importar-desde-mikrotik/` | Ruta antigua de compatibilidad; ejecuta la misma sincronización bidireccional que el endpoint moderno. |
+| `POST` | `/api/routers/{id}/sincronizar/` | Sincronización bidireccional recomendada. Permite elegir exactamente qué router actualizar. |
 
 ### Qué método HTTP usar
 
