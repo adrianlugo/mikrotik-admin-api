@@ -1,0 +1,144 @@
+# Arquitectura y evolución del proyecto
+
+## Objetivo
+
+La API administra clientes ISP y sincroniza la configuración necesaria con routers MikroTik. El proyecto está separado por responsabilidades para permitir crecimiento sin duplicar la lógica RouterOS en las vistas.
+
+## Capas actuales
+
+```text
+Cliente HTTP / Swagger
+        |
+api_mikrotik/views.py
+        |
+serializers.py -> validación de entrada
+        |
+models.py -> persistencia Django
+        |
+services.py -> comunicación con RouterOS
+        |
+MikroTik
+```
+
+## Responsabilidades
+
+### `models.py`
+
+Contiene los datos que deben persistir localmente:
+
+- Router.
+- Plan de velocidad.
+- Cliente PPPoE.
+- Cliente DHCP/IP fija.
+
+Los datos locales deben representar lo que el ISP desea configurar. Las IDs y estadísticas temporales de RouterOS no deben reemplazar este modelo de negocio.
+
+### `serializers.py`
+
+Valida datos recibidos por la API. Debe evitar:
+
+- Asociar un plan de un router a un cliente de otro router.
+- Direcciones MAC inválidas.
+- Usuarios PPPoE incompatibles con RouterOS.
+- Contraseñas cortas o campos inconsistentes.
+
+### `views.py`
+
+Expone operaciones HTTP y coordina transacciones. Las vistas deben contener poco trabajo con RouterOS; las llamadas reales deben permanecer en `services.py`.
+
+### `services.py`
+
+Centraliza los recursos RouterOS:
+
+- `/ppp/profile`.
+- `/ppp/secret`.
+- `/queue/simple`.
+- `/ip/dhcp-server/lease`.
+- `/ppp/active`.
+- `/system/resource`.
+
+No debe contener reglas de negocio de Django salvo los registros necesarios para importar o sincronizar datos.
+
+## Recursos administrados
+
+### PPPoE
+
+RouterOS usa profiles y secrets. El profile contiene el límite y la cola padre posible; el secret contiene usuario, contraseña, profile y estado operativo.
+
+### DHCP/IP fija
+
+Estos clientes se representan mediante una dirección IP, MAC opcional, plan y tipo. RouterOS necesita una cola simple hijo asociada al `cola_padre` del plan.
+
+### Colas
+
+La jerarquía visual propuesta es:
+
+```text
+Internet global
+└── Cola padre del plan
+    ├── Cola hijo PPPoE, cuando haya colas dinámicas simples
+    ├── Cola hijo DHCP
+    └── Cola hijo IP fija
+```
+
+Una cola padre representa el límite agregado de un plan. Una cola hija representa el consumo y límites individuales.
+
+## Sincronización
+
+La sincronización oficial es manual y usa el router seleccionado por ID:
+
+```http
+POST /api/routers/{id}/sincronizar/
+```
+
+Antes de automatizarla se recomienda guardar diferencias y añadir aprobación. La reconciliación automática debe limitarse inicialmente a recursos reparables, sin eliminar datos desconocidos.
+
+## Monitoreo y consumo histórico
+
+Las estadísticas devueltas por `/queue/simple` son valores de trabajo. Django debe almacenar snapshots históricos si el sistema necesita:
+
+- Consumo diario.
+- Consumo mensual.
+- Velocidad actual.
+- Anomalías y alertas.
+
+Modelo sugerido:
+
+```text
+ConsumoCola
+- router
+- cola
+- cliente opcional
+- bytes recibidos
+- bytes enviados
+- paquetes
+- velocidad registrada
+- fecha/hora
+```
+
+## Roadmap de crecimiento
+
+1. Completar CRUD DHCP/IP fija y pruebas de colas.
+2. Añadir inventario de diferencias antes de sincronizar.
+3. Guardar consumo histórico en intervalos periódicos.
+4. Añadir tarea automática configurable para sincronización y monitoreo.
+5. Añadir autenticación, permisos y roles por operador.
+6. Proteger credenciales mediante cifrado o un almacén de secretos.
+7. Añadir registro de auditoría de cambios manuales y automáticos.
+8. Añadir filtros, búsqueda y paginación a recursos operativos.
+9. Implementar métricas, alertas y panel web separado.
+10. Separar servicios RouterOS por dominios cuando crezca el proyecto: PPPoE, IP, colas, firewall y sistema.
+
+## Límites del modelo comercial futuro
+
+Un ISP real debe incorporar, antes de producción comercial:
+
+- Transacciones de facturación.
+- Suspensiones por vencimiento.
+- Auditoría de todas las operaciones.
+- Cifrado de credenciales.
+- Permisos por rol.
+- Conflictos de sincronización visibles.
+- Reintentos de API y manejo de desconexiones.
+- Respaldos y recuperación ante desastres.
+- Tests con simulador de RouterOS y pruebas de integración controladas.

@@ -6,8 +6,9 @@ API desarrollada con Django REST Framework para administrar clientes PPPoE y pla
 
 - Administración de routers MikroTik por API y Django Admin.
 - CRUD de planes de velocidad.
-- CRUD de clientes PPPoE.
+- CRUD de clientes PPPoE, DHCP e IP fija.
 - Creación, actualización, eliminación y suspensión de secretos PPPoE.
+- Creación y reparación de colas simples para clientes DHCP/IP fija.
 - Consulta de sesiones PPP activas.
 - Sincronización cruzada entre Django y RouterOS.
 - Documentación interactiva con Swagger/OpenAPI.
@@ -59,6 +60,9 @@ python manage.py runserver
 | `POST` | `/api/routers/{id}/verificar-conexion/` | Prueba acceso API y obtiene modelo, versión y uptime. |
 | `GET` | `/api/routers/{id}/estado/` | Muestra disponibilidad y cantidad de planes y clientes asociados. |
 | `POST` | `/api/routers/{id}/sincronizar/` | Sincroniza este router con Django en los dos sentidos. Endpoint recomendado. |
+| `GET` | `/api/routers/{id}/consumo/` | Consulta las colas simples y sus estadísticas disponibles. |
+| `GET` | `/api/routers/{id}/dhcp-leases/` | Lista los leases DHCP dinámicos y estáticos. |
+| `POST` | `/api/routers/{id}/reparar-colas/` | Crea o repara las colas de clientes DHCP/IP fija. |
 
 ### Planes de velocidad
 
@@ -115,6 +119,22 @@ Además de PPPoE existe una API para clientes identificados por IP/MAC:
 | `POST` | `/api/routers/{id}/reparar-colas/` | Crea colas faltantes para clientes DHCP/IP fija. |
 
 Cada plan puede guardar `cola_padre`. Django crea esa cola en `/queue/simple`; los clientes DHCP/IP fija quedan debajo mediante `parent`. Para PPPoE, el mismo plan se aplica por el profile PPPoE y puede asociarse al parent queue mediante `parent-queue` cuando el RouterOS lo admite.
+
+## Documentación técnica
+
+- [Sincronización bidireccional](docs/synchronization.md).
+- [Arquitectura y roadmap](docs/architecture.md).
+
+## Modelos y reglas de crecimiento
+
+Para mantener el proyecto estable:
+
+- La comunicación con RouterOS debe permanecer en `MikroTikService`.
+- Las vistas HTTP deben coordinar validación, persistencia y respuestas.
+- Los modelos y serializers deben impedir asociaciones entre recursos de routers distintos.
+- La eliminación de RouterOS debe confirmarse antes de eliminar el registro Django.
+- Las rutas antiguas basadas en el primer router no deben volver a añadirse.
+- Las estadísticas de colas deben almacenarse históricamente con tareas periódicas antes de construir dashboards comerciales.
 
 ## Sincronización
 

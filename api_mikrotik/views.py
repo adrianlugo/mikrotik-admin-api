@@ -360,7 +360,38 @@ class PlanVelocidadViewSet(viewsets.ModelViewSet):
         return Response({"plan": PlanVelocidadSerializer(plan).data, "mikrotik_status": perfil, "cola_padre_status": cola})
 
 
-@extend_schema(tags=['Clientes DHCP e IP fija'])
+@extend_schema_view(
+    list=extend_schema(
+        summary="Listar clientes DHCP e IP fija",
+        description="Lista los clientes de red registrados. Permite filtrar por router, plan, tipo y estado; y buscar por nombre, IP o MAC.",
+        tags=['Clientes DHCP e IP fija'],
+    ),
+    retrieve=extend_schema(
+        summary="Consultar un cliente DHCP o IP fija",
+        description="Obtiene el registro, su plan, dirección IP/MAC, estado y nombre de la cola administrada en RouterOS.",
+        tags=['Clientes DHCP e IP fija'],
+    ),
+    create=extend_schema(
+        summary="Crear un cliente DHCP o IP fija",
+        description="Registra el cliente y crea inmediatamente una cola simple en su router. La cola se ancla al cola_padre del plan cuando está configurada.",
+        tags=['Clientes DHCP e IP fija'],
+    ),
+    update=extend_schema(
+        summary="Actualizar completamente un cliente de red",
+        description="Reemplaza los datos editables y vuelve a sincronizar target, límites, estado y parent de la cola.",
+        tags=['Clientes DHCP e IP fija'],
+    ),
+    partial_update=extend_schema(
+        summary="Actualizar parcialmente un cliente de red",
+        description="Modifica únicamente los campos enviados y sincroniza después la cola correspondiente.",
+        tags=['Clientes DHCP e IP fija'],
+    ),
+    destroy=extend_schema(
+        summary="Eliminar cliente DHCP o IP fija",
+        description="Elimina primero la cola simple de RouterOS; el registro local solo se elimina si la operación termina correctamente.",
+        tags=['Clientes DHCP e IP fija'],
+    ),
+)
 class ClienteRedViewSet(viewsets.ModelViewSet):
     queryset = ClienteRed.objects.select_related('router', 'plan').all()
     serializer_class = ClienteRedSerializer
@@ -396,7 +427,7 @@ class ClienteRedViewSet(viewsets.ModelViewSet):
         cliente.delete()
         return Response({"message": "Cliente y cola eliminados", "mikrotik_status": resultado})
 
-    @extend_schema(summary="Crear o reparar la cola del cliente", tags=['Clientes DHCP e IP fija'])
+    @extend_schema(summary="Crear o reparar la cola del cliente", description="Consulta por nombre la cola del cliente en RouterOS y la crea o actualiza con su IP, plan, parent y estado actuales.", tags=['Clientes DHCP e IP fija'])
     @action(detail=True, methods=['post'], url_path='crear-cola')
     def crear_cola(self, request, pk=None):
         cliente = self.get_object()
