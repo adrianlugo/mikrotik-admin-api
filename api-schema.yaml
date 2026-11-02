@@ -273,8 +273,8 @@ paths:
   /api/clientes-pppoe/{id}/ping/:
     post:
       operationId: clientes_pppoe_ping_create
-      description: Valida una dirección IP y ejecuta el ping desde el MikroTik hacia
-        ella.
+      description: Usa la IP de antena guardada del cliente, o la IP enviada como
+        'ip', y ejecuta un diagnóstico desde el propio MikroTik.
       summary: Hacer ping desde el router al equipo del cliente
       parameters:
       - in: path
@@ -289,14 +289,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ClientePPPoE'
+              $ref: '#/components/schemas/PingClienteRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/ClientePPPoE'
+              $ref: '#/components/schemas/PingClienteRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/ClientePPPoE'
-        required: true
+              $ref: '#/components/schemas/PingClienteRequest'
       security:
       - tokenAuth: []
       - cookieAuth: []
@@ -305,13 +304,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ClientePPPoE'
+                $ref: '#/components/schemas/PingClienteResponse'
           description: ''
   /api/clientes-pppoe/activos/:
     get:
       operationId: clientes_pppoe_activos_retrieve
-      description: Consulta mediante la API del MikroTik las conexiones activas en
-        tiempo real del primer router configurado.
+      description: Consulta en el router asociado al conjunto de clientes las sesiones
+        PPP activas reportadas por RouterOS. Los nombres mostrados permiten identificar
+        qué usuarios tienen una conexión establecida actualmente.
       summary: Listar usuarios activos en MikroTik
       tags:
       - Monitoreo MikroTik
@@ -719,6 +719,9 @@ paths:
   /api/pagos/:
     get:
       operationId: pagos_list
+      description: Lista los pagos registrados y permite comprobar qué factura recibió
+        cada abono.
+      summary: Listar pagos
       parameters:
       - name: search
         required: false
@@ -727,7 +730,7 @@ paths:
         schema:
           type: string
       tags:
-      - pagos
+      - Pagos
       security:
       - tokenAuth: []
       - cookieAuth: []
@@ -742,8 +745,11 @@ paths:
           description: ''
     post:
       operationId: pagos_create
+      description: Registra un pago sobre una factura y lo asociará al usuario autenticado.
+        La factura pasa a pagada cuando los pagos alcanzan su monto total.
+      summary: Registrar un pago
       tags:
-      - pagos
+      - Pagos
       requestBody:
         content:
           application/json:
@@ -769,6 +775,9 @@ paths:
   /api/pagos/{id}/:
     get:
       operationId: pagos_retrieve
+      description: Obtiene el monto, método, referencia, usuario registrante y fecha
+        de un pago.
+      summary: Consultar un pago
       parameters:
       - in: path
         name: id
@@ -777,7 +786,7 @@ paths:
         description: A unique integer value identifying this pago.
         required: true
       tags:
-      - pagos
+      - Pagos
       security:
       - tokenAuth: []
       - cookieAuth: []
@@ -790,6 +799,9 @@ paths:
           description: ''
     put:
       operationId: pagos_update
+      description: Reemplaza los datos editables de un pago sin cambiar el usuario
+        registrante.
+      summary: Actualizar un pago
       parameters:
       - in: path
         name: id
@@ -798,7 +810,7 @@ paths:
         description: A unique integer value identifying this pago.
         required: true
       tags:
-      - pagos
+      - Pagos
       requestBody:
         content:
           application/json:
@@ -823,6 +835,8 @@ paths:
           description: ''
     patch:
       operationId: pagos_partial_update
+      description: Modifica únicamente los campos indicados de un pago.
+      summary: Actualizar parcialmente un pago
       parameters:
       - in: path
         name: id
@@ -831,7 +845,7 @@ paths:
         description: A unique integer value identifying this pago.
         required: true
       tags:
-      - pagos
+      - Pagos
       requestBody:
         content:
           application/json:
@@ -855,6 +869,9 @@ paths:
           description: ''
     delete:
       operationId: pagos_destroy
+      description: Elimina el pago y recalcula automáticamente el estado de la factura
+        según los abonos restantes.
+      summary: Eliminar un pago
       parameters:
       - in: path
         name: id
@@ -863,7 +880,7 @@ paths:
         description: A unique integer value identifying this pago.
         required: true
       tags:
-      - pagos
+      - Pagos
       security:
       - tokenAuth: []
       - cookieAuth: []
@@ -1233,6 +1250,8 @@ paths:
   /api/routers/{id}/consumo/:
     get:
       operationId: routers_consumo_retrieve
+      description: Consulta las colas simples del router y devuelve nombre, parent,
+        target, límite, tráfico acumulado, velocidad y estado disponibles en ese momento.
       summary: Monitorear consumo del router
       parameters:
       - in: path
@@ -1256,6 +1275,8 @@ paths:
   /api/routers/{id}/dhcp-leases/:
     get:
       operationId: routers_dhcp_leases_retrieve
+      description: Consulta los leases DHCP dinámicos y estáticos de RouterOS, incluyendo
+        dirección, MAC, servidor, estado y comentario cuando estén disponibles.
       summary: Listar leases DHCP
       parameters:
       - in: path
@@ -1304,6 +1325,8 @@ paths:
   /api/routers/{id}/reparar-colas/:
     post:
       operationId: routers_reparar_colas_create
+      description: Recorre los clientes DHCP/IP fija de este router y crea o actualiza
+        las colas simples que no tengan nombre, límites o parent correctos.
       summary: Crear y reparar colas de clientes
       parameters:
       - in: path
@@ -1919,6 +1942,28 @@ components:
           type: string
           format: date-time
           readOnly: true
+    PingClienteRequest:
+      type: object
+      properties:
+        ip:
+          type: string
+          description: Dirección de destino opcional. Si se omite se usa direccion_ip_antena.
+    PingClienteResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        destino:
+          type: string
+        resultado:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - destino
+      - resultado
+      - status
     PlanVelocidad:
       type: object
       properties:
@@ -2014,17 +2059,25 @@ components:
     UsuariosActivosResponse:
       type: object
       properties:
-        router:
-          type: string
+        routers:
+          type: array
+          items:
+            type: string
         total_conectados:
           type: integer
         conexiones:
           type: array
           items:
             type: string
+        errores:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
       required:
       - conexiones
-      - router
+      - errores
+      - routers
       - total_conectados
   securitySchemes:
     cookieAuth:

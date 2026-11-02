@@ -61,7 +61,7 @@ Roles disponibles:
 | `GET` | `/api/clientes-pppoe/{id}/` | Consulta un cliente. |
 | `PUT/PATCH` | `/api/clientes-pppoe/{id}/` | Actualiza localmente y en RouterOS. |
 | `DELETE` | `/api/clientes-pppoe/{id}/` | Elimina secreto y registro local. |
-| `GET` | `/api/clientes-pppoe/activos/` | Lista conexiones PPP activas. El router utilizado debe revisarse en el futuro para permitir selección explícita. |
+| `GET` | `/api/clientes-pppoe/activos/` | Lista conexiones PPP activas. Consulta las sesiones PPP de todos los routers que tienen clientes PPPoE registrados. |
 | `POST` | `/api/clientes-pppoe/{id}/cambiar-estado/` | Activa o suspende el cliente. |
 | `POST` | `/api/clientes-pppoe/{id}/ping/` | Ejecuta ping desde el router hacia la IP indicada o la IP de antena. |
 | `POST` | `/api/clientes-pppoe/{id}/patear/` | Desconecta las sesiones PPP activas del usuario. |

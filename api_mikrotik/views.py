@@ -56,13 +56,14 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         summary="Listar usuarios activos en MikroTik",
-        description="Consulta mediante la API del MikroTik las conexiones activas en tiempo real del primer router configurado.",
+        description="Consulta en el router asociado al conjunto de clientes las sesiones PPP activas reportadas por RouterOS. Los nombres mostrados permiten identificar qué usuarios tienen una conexión establecida actualmente.",
         responses={200: inline_serializer(
             name='UsuariosActivosResponse',
             fields={
-                'router': serializers.CharField(),
+                'routers': serializers.ListField(child=serializers.CharField()),
                 'total_conectados': serializers.IntegerField(),
-                'conexiones': serializers.ListField(child=serializers.CharField())
+                'conexiones': serializers.ListField(child=serializers.CharField()),
+                'errores': serializers.ListField(child=serializers.DictField())
             }
         )},
         tags=['Monitoreo MikroTik']
@@ -70,18 +71,25 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='activos')
     def listar_activos(self, request):
         """Endpoint para consultar el estado en tiempo real del MikroTik"""
-        router_principal = Router.objects.first()
-        
-        if not router_principal:
-            return Response({"error": "No hay ningún router registrado en el sistema"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        mikrotik_service = MikroTikService(router_principal)
-        usuarios_activos = mikrotik_service.obtener_conexiones_activas()
-        
+        usuarios_activos = []
+        routers_consultados = []
+        errores = []
+        for router in Router.objects.filter(clientespppoe__isnull=False).distinct():
+            resultado = MikroTikService(router).obtener_conexiones_activas()
+            routers_consultados.append(router.nombre)
+            if isinstance(resultado, list):
+                usuarios_activos.extend(resultado)
+            else:
+                errores.append({"router": router.nombre, "mensaje": resultado.get("message", "No fue posible consultar las sesiones")})
+
+        if not routers_consultados:
+            return Response({"error": "No hay clientes PPPoE asociados a routers registrados"}, status=status.HTTP_400_BAD_REQUEST)
+
         return Response({
-            "router": router_principal.nombre,
+            "routers": routers_consultados,
             "total_conectados": len(usuarios_activos),
-            "conexiones": usuarios_activos
+            "conexiones": usuarios_activos,
+            "errores": errores
         }, status=status.HTTP_200_OK)
 
     def create(self, request, *args, **kwargs):
@@ -212,7 +220,7 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
             "cliente_estado": cliente.estado
         }, status=status.HTTP_200_OK)
 
-    @extend_schema(summary="Hacer ping desde el router al equipo del cliente", description="Valida una dirección IP y ejecuta el ping desde el MikroTik hacia ella.", tags=['Monitoreo MikroTik'])
+    @extend_schema(summary="Hacer ping desde el router al equipo del cliente", description="Usa la IP de antena guardada del cliente, o la IP enviada como 'ip', y ejecuta un diagnóstico desde el propio MikroTik.", request=inline_serializer(name='PingClienteRequest', fields={'ip': serializers.IPAddressField(required=False, help_text='Dirección de destino opcional. Si se omite se usa direccion_ip_antena.')}), responses={200: inline_serializer(name='PingClienteResponse', fields={'status': serializers.CharField(), 'destino': serializers.CharField(), 'resultado': serializers.ListField(child=serializers.DictField())})}, tags=['Monitoreo MikroTik'])
     @action(detail=True, methods=['post'], url_path='ping')
     def ping(self, request, pk=None):
         cliente = self.get_object()
@@ -274,14 +282,14 @@ class RouterViewSet(viewsets.ModelViewSet):
             'planes_configurados': PlanVelocidad.objects.filter(router=router).count(),
         }, status=status.HTTP_200_OK)
 
-    @extend_schema(summary="Monitorear consumo del router", tags=['Monitoreo MikroTik'])
+    @extend_schema(summary="Monitorear consumo del router", description="Consulta las colas simples del router y devuelve nombre, parent, target, límite, tráfico acumulado, velocidad y estado disponibles en ese momento.", tags=['Monitoreo MikroTik'])
     @action(detail=True, methods=['get'], url_path='consumo')
     def consumo(self, request, pk=None):
         router = self.get_object()
         colas = MikroTikService(router).monitor_consumo()
         return Response({'router': router.nombre, 'total_colas': len(colas), 'colas': colas})
 
-    @extend_schema(summary="Crear y reparar colas de clientes", tags=['Routers MikroTik'])
+    @extend_schema(summary="Crear y reparar colas de clientes", description="Recorre los clientes DHCP/IP fija de este router y crea o actualiza las colas simples que no tengan nombre, límites o parent correctos.", tags=['Routers MikroTik'])
     @action(detail=True, methods=['post'], url_path='reparar-colas')
     def reparar_colas(self, request, pk=None):
         router = self.get_object()
@@ -289,7 +297,7 @@ class RouterViewSet(viewsets.ModelViewSet):
         code = status.HTTP_200_OK if resultado.get('status') == 'success' else status.HTTP_502_BAD_GATEWAY
         return Response(resultado, status=code)
 
-    @extend_schema(summary="Listar leases DHCP", tags=['Monitoreo MikroTik'])
+    @extend_schema(summary="Listar leases DHCP", description="Consulta los leases DHCP dinámicos y estáticos de RouterOS, incluyendo dirección, MAC, servidor, estado y comentario cuando estén disponibles.", tags=['Monitoreo MikroTik'])
     @action(detail=True, methods=['get'], url_path='dhcp-leases')
     def dhcp_leases(self, request, pk=None):
         router = self.get_object()
@@ -418,24 +426,54 @@ class PlanVelocidadViewSet(viewsets.ModelViewSet):
         tags=['Clientes DHCP e IP fija'],
     ),
 )
+@extend_schema_view(
+    list=extend_schema(summary="Listar facturas", description="Lista facturas con cliente, período, monto, vencimiento y estado. Permite controlar saldos pendientes y vencidos.", tags=['Facturación']),
+    retrieve=extend_schema(summary="Consultar una factura", description="Obtiene los datos completos de una factura y su cliente asociado.", tags=['Facturación']),
+    create=extend_schema(summary="Crear una factura", description="Registra una factura mensual para un cliente. No debe existir otra factura del mismo período para ese cliente.", tags=['Facturación']),
+    update=extend_schema(summary="Actualizar una factura", description="Reemplaza los datos editables de una factura.", tags=['Facturación']),
+    partial_update=extend_schema(summary="Actualizar parcialmente una factura", description="Modifica solamente los campos enviados de una factura.", tags=['Facturación']),
+    destroy=extend_schema(summary="Eliminar una factura", description="Elimina la factura si las restricciones de integridad de Django lo permiten.", tags=['Facturación']),
+)
 class FacturaViewSet(viewsets.ModelViewSet):
     queryset = Factura.objects.select_related('cliente').all()
     serializer_class = FacturaSerializer
     permission_classes = [PermisoOperativo]
 
 
+@extend_schema_view(
+    list=extend_schema(summary="Listar pagos", description="Lista los pagos registrados y permite comprobar qué factura recibió cada abono.", tags=['Pagos']),
+    retrieve=extend_schema(summary="Consultar un pago", description="Obtiene el monto, método, referencia, usuario registrante y fecha de un pago.", tags=['Pagos']),
+    create=extend_schema(summary="Registrar un pago", description="Registra un pago sobre una factura y lo asociará al usuario autenticado. La factura pasa a pagada cuando los pagos alcanzan su monto total.", tags=['Pagos']),
+    update=extend_schema(summary="Actualizar un pago", description="Reemplaza los datos editables de un pago sin cambiar el usuario registrante.", tags=['Pagos']),
+    partial_update=extend_schema(summary="Actualizar parcialmente un pago", description="Modifica únicamente los campos indicados de un pago.", tags=['Pagos']),
+    destroy=extend_schema(summary="Eliminar un pago", description="Elimina el pago y recalcula automáticamente el estado de la factura según los abonos restantes.", tags=['Pagos']),
+)
 class PagoViewSet(viewsets.ModelViewSet):
     queryset = Pago.objects.select_related('factura').all()
     serializer_class = PagoSerializer
     permission_classes = [PermisoOperativo]
 
+    def actualizar_estado_factura(self, factura):
+        if factura.estado == 'anulada':
+            return
+        pagado = sum((item.monto for item in factura.pagos.all()), 0)
+        nuevo_estado = 'pagada' if pagado >= factura.monto else 'pendiente'
+        if factura.estado != nuevo_estado:
+            factura.estado = nuevo_estado
+            factura.save(update_fields=['estado', 'actualizado_en'])
+
     def perform_create(self, serializer):
         pago = serializer.save(registrado_por=self.request.user)
-        factura = pago.factura
-        pagado = sum((item.monto for item in factura.pagos.all()), 0)
-        if pagado >= factura.monto:
-            factura.estado = 'pagada'
-            factura.save(update_fields=['estado', 'actualizado_en'])
+        self.actualizar_estado_factura(pago.factura)
+
+    def perform_update(self, serializer):
+        pago = serializer.save()
+        self.actualizar_estado_factura(pago.factura)
+
+    def perform_destroy(self, instance):
+        factura = instance.factura
+        instance.delete()
+        self.actualizar_estado_factura(factura)
 
 
 @extend_schema(
