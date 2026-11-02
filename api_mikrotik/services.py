@@ -175,7 +175,7 @@ class MikroTikService:
         except Exception as e:
             logger.warning(f"No se pudo forzar la desconexiÃ³n del usuario {usuario_pppoe}: {e}")
 
-    def crear_perfil_velocidad(self, nombre_perfil, subida, bajada):
+    def crear_perfil_velocidad(self, nombre_perfil, subida, bajada, cola_padre=''):
         """Crea o actualiza un profile PPP de MikroTik."""
         if self.simulado:
             return self._simular_operacion(
@@ -186,6 +186,8 @@ class MikroTikService:
             resource = self._obtener_conexion_real().get_resource('/ppp/profile')
             existentes = [p for p in resource.get() if p.get('name') == nombre_perfil]
             parametros = {'rate-limit': f'{subida}/{bajada}'}
+            if cola_padre:
+                parametros['parent-queue'] = cola_padre
             if existentes:
                 resource.set(id=self._obtener_id_router(existentes[0]), **parametros)
             else:
@@ -333,3 +335,127 @@ class MikroTikService:
     def importar_secretos_hacia_django(self):
         """Compatibilidad con clientes anteriores; ahora tambiÃ©n exporta datos locales."""
         return self.sincronizar_bidireccional()
+
+    def listar_colas(self):
+        """Consulta las colas simples del router, incluyendo tráfico acumulado."""
+        if self.simulado:
+            return []
+        try:
+            api = self._obtener_conexion_real()
+            return api.get_resource('/queue/simple').get()
+        except Exception as e:
+            logger.exception("No se pudieron consultar las colas simples")
+            return []
+
+    def asegurar_cola_padre(self, nombre, velocidad_subida, velocidad_bajada):
+        """Crea o actualiza la cola padre de un plan."""
+        if self.simulado:
+            return {"status": "success", "message": "Operación simulada correctamente"}
+        try:
+            api = self._obtener_conexion_real()
+            colas = api.get_resource('/queue/simple')
+            existentes = [item for item in colas.get() if item.get('name') == nombre]
+            parametros = {
+                'name': nombre,
+                'max-limit': f'{velocidad_subida}M/{velocidad_bajada}M',
+                'comment': 'Cola padre administrada por ISP API',
+            }
+            if existentes:
+                colas.set(id=self._obtener_id_router(existentes[0]), **parametros)
+            else:
+                colas.add(**parametros)
+            return {"status": "success", "message": "Cola padre sincronizada", "name": nombre}
+        except Exception as e:
+            logger.exception("No se pudo sincronizar la cola padre")
+            return {"status": "error", "message": str(e)}
+
+    def sincronizar_cola_cliente_red(self, cliente, plan=None):
+        """Crea o actualiza la cola hijo de un cliente DHCP/IP fija."""
+        if plan is None:
+            plan = cliente.plan
+        nombre = cliente.cola_mikrotik or f"cliente-{cliente.id}"
+        if self.simulado:
+            cliente.cola_mikrotik = nombre
+            cliente.save(update_fields=['cola_mikrotik'])
+            return {"status": "success", "message": "Operación simulada correctamente", "name": nombre}
+        try:
+            api = self._obtener_conexion_real()
+            colas = api.get_resource('/queue/simple')
+            existentes = [item for item in colas.get() if item.get('name') == nombre]
+            parametros = {
+                'name': nombre,
+                'target': cliente.direccion_ip,
+                'max-limit': f'{plan.subida_mbps}M/{plan.bajada_mbps}M',
+                'disabled': 'false' if cliente.estado == 'activo' else 'true',
+                'comment': f"Cliente {cliente.id} - {cliente.nombre}",
+            }
+            if plan.cola_padre:
+                parametros['parent'] = plan.cola_padre
+            if existentes:
+                colas.set(id=self._obtener_id_router(existentes[0]), **parametros)
+            else:
+                colas.add(**parametros)
+            cliente.cola_mikrotik = nombre
+            cliente.save(update_fields=['cola_mikrotik'])
+            return {"status": "success", "message": "Cola del cliente sincronizada", "name": nombre}
+        except Exception as e:
+            logger.exception("No se pudo sincronizar la cola del cliente")
+            return {"status": "error", "message": str(e)}
+
+    def eliminar_cola_cliente_red(self, cliente):
+        """Elimina una cola hijo sin eliminar las reservas DHCP/IP asociadas."""
+        if self.simulado:
+            return {"status": "success", "message": "Operación simulada correctamente"}
+        try:
+            api = self._obtener_conexion_real()
+            colas = api.get_resource('/queue/simple')
+            coincidentes = [item for item in colas.get() if item.get('name') == cliente.cola_mikrotik]
+            if coincidentes:
+                colas.remove(id=self._obtener_id_router(coincidentes[0]))
+            return {"status": "success", "message": "Cola eliminada"}
+        except Exception as e:
+            logger.exception("No se pudo eliminar la cola del cliente")
+            return {"status": "error", "message": str(e)}
+
+    def listar_dhcp_leases(self):
+        """Lista leases DHCP e incluye dinámicos y estáticos."""
+        if self.simulado:
+            return []
+        try:
+            api = self._obtener_conexion_real()
+            return api.get_resource('/ip/dhcp-server/lease').get()
+        except Exception as e:
+            logger.exception("No se pudieron consultar leases DHCP")
+            return []
+
+    def reparar_usuarios_red(self):
+        """Genera una cola para clientes DHCP/IP fija que aún no la tengan."""
+        from .models import ClienteRed
+        created = updated = 0
+        for cliente in ClienteRed.objects.filter(router=self.router).select_related('plan'):
+            antes = cliente.cola_mikrotik
+            resultado = self.sincronizar_cola_cliente_red(cliente)
+            if resultado.get('status') != 'success':
+                continue
+            if antes:
+                updated += 1
+            else:
+                created += 1
+        return {"status": "success", "colas_creadas": created, "colas_actualizadas": updated}
+
+    def monitor_consumo(self):
+        """Resume el tráfico de las colas simples del router."""
+        colas = self.listar_colas()
+        resultado = []
+        for cola in colas:
+            resultado.append({
+                "name": cola.get('name'),
+                "parent": cola.get('parent'),
+                "target": cola.get('target'),
+                "max-limit": cola.get('max-limit'),
+                "bytes": cola.get('bytes'),
+                "packets": cola.get('packets'),
+                "rate": cola.get('rate'),
+                "disabled": cola.get('disabled', 'false'),
+            })
+        return resultado

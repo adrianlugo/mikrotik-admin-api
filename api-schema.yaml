@@ -321,6 +321,230 @@ paths:
               schema:
                 $ref: '#/components/schemas/SincronizacionClienteResponse'
           description: ''
+  /api/clientes-red/:
+    get:
+      operationId: clientes_red_list
+      parameters:
+      - in: query
+        name: estado
+        schema:
+          type: string
+          enum:
+          - activo
+          - suspendido
+        description: |-
+          * `activo` - Activo
+          * `suspendido` - Suspendido
+      - in: query
+        name: plan
+        schema:
+          type: integer
+      - in: query
+        name: router
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: tipo
+        schema:
+          type: string
+          enum:
+          - dhcp
+          - ip_fija
+        description: |-
+          * `dhcp` - DHCP
+          * `ip_fija` - IP fija
+      tags:
+      - Clientes DHCP e IP fija
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClienteRed'
+          description: ''
+    post:
+      operationId: clientes_red_create
+      tags:
+      - Clientes DHCP e IP fija
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClienteRed'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ClienteRed'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ClienteRed'
+        required: true
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClienteRed'
+          description: ''
+  /api/clientes-red/{id}/:
+    get:
+      operationId: clientes_red_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this cliente red.
+        required: true
+      tags:
+      - Clientes DHCP e IP fija
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClienteRed'
+          description: ''
+    put:
+      operationId: clientes_red_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this cliente red.
+        required: true
+      tags:
+      - Clientes DHCP e IP fija
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClienteRed'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ClienteRed'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ClienteRed'
+        required: true
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClienteRed'
+          description: ''
+    patch:
+      operationId: clientes_red_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this cliente red.
+        required: true
+      tags:
+      - Clientes DHCP e IP fija
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedClienteRed'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedClienteRed'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedClienteRed'
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClienteRed'
+          description: ''
+    delete:
+      operationId: clientes_red_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this cliente red.
+        required: true
+      tags:
+      - Clientes DHCP e IP fija
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '204':
+          description: No response body
+  /api/clientes-red/{id}/crear-cola/:
+    post:
+      operationId: clientes_red_crear_cola_create
+      summary: Crear o reparar la cola del cliente
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this cliente red.
+        required: true
+      tags:
+      - Clientes DHCP e IP fija
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClienteRed'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ClienteRed'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ClienteRed'
+        required: true
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClienteRed'
+          description: ''
   /api/planes/:
     get:
       operationId: planes_list
@@ -670,6 +894,54 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/routers/{id}/consumo/:
+    get:
+      operationId: routers_consumo_retrieve
+      summary: Monitorear consumo del router
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this router.
+        required: true
+      tags:
+      - Monitoreo MikroTik
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Router'
+          description: ''
+  /api/routers/{id}/dhcp-leases/:
+    get:
+      operationId: routers_dhcp_leases_retrieve
+      summary: Listar leases DHCP
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this router.
+        required: true
+      tags:
+      - Monitoreo MikroTik
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Router'
+          description: ''
   /api/routers/{id}/estado/:
     get:
       operationId: routers_estado_retrieve
@@ -685,6 +957,42 @@ paths:
         required: true
       tags:
       - Routers MikroTik
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Router'
+          description: ''
+  /api/routers/{id}/reparar-colas/:
+    post:
+      operationId: routers_reparar_colas_create
+      summary: Crear y reparar colas de clientes
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this router.
+        required: true
+      tags:
+      - Routers MikroTik
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Router'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Router'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Router'
+        required: true
       security:
       - cookieAuth: []
       - basicAuth: []
@@ -826,7 +1134,7 @@ components:
           type: string
           maxLength: 200
         estado:
-          $ref: '#/components/schemas/ClientePPPoEEstadoEnum'
+          $ref: '#/components/schemas/EstadoB1eEnum'
         creado_en:
           type: string
           format: date-time
@@ -845,7 +1153,60 @@ components:
       - router
       - router_nombre
       - usuario_pppoe
-    ClientePPPoEEstadoEnum:
+    ClienteRed:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        router_nombre:
+          type: string
+          readOnly: true
+        plan_nombre:
+          type: string
+          readOnly: true
+        nombre:
+          type: string
+          maxLength: 200
+        tipo:
+          $ref: '#/components/schemas/TipoEnum'
+        direccion_ip:
+          type: string
+        direccion_mac:
+          type: string
+          maxLength: 17
+        cola_mikrotik:
+          type: string
+          maxLength: 100
+        routeros_id:
+          type: string
+          maxLength: 100
+        estado:
+          $ref: '#/components/schemas/EstadoB1eEnum'
+        creado_en:
+          type: string
+          format: date-time
+          readOnly: true
+        actualizado_en:
+          type: string
+          format: date-time
+          readOnly: true
+        router:
+          type: integer
+        plan:
+          type: integer
+      required:
+      - actualizado_en
+      - creado_en
+      - direccion_ip
+      - id
+      - nombre
+      - plan
+      - plan_nombre
+      - router
+      - router_nombre
+      - tipo
+    EstadoB1eEnum:
       enum:
       - activo
       - suspendido
@@ -888,8 +1249,50 @@ components:
           type: string
           maxLength: 200
         estado:
-          $ref: '#/components/schemas/ClientePPPoEEstadoEnum'
+          $ref: '#/components/schemas/EstadoB1eEnum'
         creado_en:
+          type: string
+          format: date-time
+          readOnly: true
+        router:
+          type: integer
+        plan:
+          type: integer
+    PatchedClienteRed:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        router_nombre:
+          type: string
+          readOnly: true
+        plan_nombre:
+          type: string
+          readOnly: true
+        nombre:
+          type: string
+          maxLength: 200
+        tipo:
+          $ref: '#/components/schemas/TipoEnum'
+        direccion_ip:
+          type: string
+        direccion_mac:
+          type: string
+          maxLength: 17
+        cola_mikrotik:
+          type: string
+          maxLength: 100
+        routeros_id:
+          type: string
+          maxLength: 100
+        estado:
+          $ref: '#/components/schemas/EstadoB1eEnum'
+        creado_en:
+          type: string
+          format: date-time
+          readOnly: true
+        actualizado_en:
           type: string
           format: date-time
           readOnly: true
@@ -905,6 +1308,10 @@ components:
           readOnly: true
         nombre_perfil:
           type: string
+          maxLength: 100
+        cola_padre:
+          type: string
+          description: Nombre de la cola padre en MikroTik
           maxLength: 100
         subida_mbps:
           type: integer
@@ -956,6 +1363,10 @@ components:
           readOnly: true
         nombre_perfil:
           type: string
+          maxLength: 100
+        cola_padre:
+          type: string
+          description: Nombre de la cola padre en MikroTik
           maxLength: 100
         subida_mbps:
           type: integer
@@ -1023,6 +1434,14 @@ components:
       required:
       - details
       - message
+    TipoEnum:
+      enum:
+      - dhcp
+      - ip_fija
+      type: string
+      description: |-
+        * `dhcp` - DHCP
+        * `ip_fija` - IP fija
     UsuariosActivosResponse:
       type: object
       properties:

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Router, PlanVelocidad, ClientePPPoE
+from .models import Router, PlanVelocidad, ClientePPPoE, ClienteRed
 
 @admin.register(Router)
 class RouterAdmin(admin.ModelAdmin):
@@ -18,3 +18,9 @@ class ClientePPPoEAdmin(admin.ModelAdmin):
     list_display = ('usuario_pppoe', 'nombre_completo', 'router', 'plan', 'estado', 'creado_en')
     list_filter = ('estado', 'router', 'plan')
     search_fields = ('usuario_pppoe', 'nombre_completo')
+
+@admin.register(ClienteRed)
+class ClienteRedAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'tipo', 'direccion_ip', 'direccion_mac', 'router', 'plan', 'cola_mikrotik', 'estado')
+    list_filter = ('tipo', 'estado', 'router', 'plan')
+    search_fields = ('nombre', 'direccion_ip', 'direccion_mac')

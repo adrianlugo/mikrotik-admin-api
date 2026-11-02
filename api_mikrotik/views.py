@@ -6,8 +6,8 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter
 from drf_spectacular.utils import extend_schema, inline_serializer, extend_schema_view
 
-from .models import ClientePPPoE, PlanVelocidad, Router
-from .serializers import ClientePPPoESerializer, PlanVelocidadSerializer, RouterSerializer
+from .models import ClientePPPoE, ClienteRed, PlanVelocidad, Router
+from .serializers import ClientePPPoESerializer, ClienteRedSerializer, PlanVelocidadSerializer, RouterSerializer
 from .services import MikroTikService
 
 @extend_schema_view(
@@ -297,8 +297,31 @@ class RouterViewSet(viewsets.ModelViewSet):
             'activo': router.activo,
             'conexion': conexion,
             'clientes_configurados': ClientePPPoE.objects.filter(router=router).count(),
+            'clientes_red_configurados': ClienteRed.objects.filter(router=router).count(),
             'planes_configurados': PlanVelocidad.objects.filter(router=router).count(),
         }, status=status.HTTP_200_OK)
+
+    @extend_schema(summary="Monitorear consumo del router", tags=['Monitoreo MikroTik'])
+    @action(detail=True, methods=['get'], url_path='consumo')
+    def consumo(self, request, pk=None):
+        router = self.get_object()
+        colas = MikroTikService(router).monitor_consumo()
+        return Response({'router': router.nombre, 'total_colas': len(colas), 'colas': colas})
+
+    @extend_schema(summary="Crear y reparar colas de clientes", tags=['Routers MikroTik'])
+    @action(detail=True, methods=['post'], url_path='reparar-colas')
+    def reparar_colas(self, request, pk=None):
+        router = self.get_object()
+        resultado = MikroTikService(router).reparar_usuarios_red()
+        code = status.HTTP_200_OK if resultado.get('status') == 'success' else status.HTTP_502_BAD_GATEWAY
+        return Response(resultado, status=code)
+
+    @extend_schema(summary="Listar leases DHCP", tags=['Monitoreo MikroTik'])
+    @action(detail=True, methods=['get'], url_path='dhcp-leases')
+    def dhcp_leases(self, request, pk=None):
+        router = self.get_object()
+        leases = MikroTikService(router).listar_dhcp_leases()
+        return Response({'router': router.nombre, 'total': len(leases), 'leases': leases})
 
 
 @extend_schema_view(
@@ -344,18 +367,90 @@ class PlanVelocidadViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             plan = serializer.save()
             mikrotik_service = MikroTikService(plan.router)
+            if not plan.cola_padre:
+                plan.cola_padre = f"Plan-{plan.nombre_perfil}"
+                plan.save(update_fields=['cola_padre'])
             resultado = mikrotik_service.crear_perfil_velocidad(
                 nombre_perfil=plan.nombre_perfil,
                 subida=f"{plan.subida_mbps}M",
                 bajada=f"{plan.bajada_mbps}M",
+                cola_padre=plan.cola_padre,
             )
-            
-            # Si el MikroTik rechaza el perfil (ej: nombre duplicado o sintaxis inválida), hacemos rollback en Django
+            resultado_cola = mikrotik_service.asegurar_cola_padre(
+                plan.cola_padre, plan.subida_mbps, plan.bajada_mbps
+            )
             if resultado.get("status") == "error":
                 raise serializers.ValidationError({"mikrotik_error": resultado.get("message")})
+            if resultado_cola.get("status") == "error":
+                raise serializers.ValidationError({"mikrotik_error": resultado_cola.get("message")})
 
         headers = self.get_success_headers(serializer.data)
         return Response({
-            "plan": serializer.data,
-            "mikrotik_status": resultado
+            "plan": PlanVelocidadSerializer(plan).data,
+            "mikrotik_status": resultado,
+            "cola_padre_status": resultado_cola,
         }, status=status.HTTP_201_CREATED, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        parcial = kwargs.get('partial', False)
+        plan = self.get_object()
+        serializer = self.get_serializer(plan, data=request.data, partial=parcial)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            plan = serializer.save()
+            if not plan.cola_padre:
+                plan.cola_padre = f"Plan-{plan.nombre_perfil}"
+                plan.save(update_fields=['cola_padre'])
+            mikrotik = MikroTikService(plan.router)
+            perfil = mikrotik.crear_perfil_velocidad(plan.nombre_perfil, f"{plan.subida_mbps}M", f"{plan.bajada_mbps}M", plan.cola_padre)
+            cola = mikrotik.asegurar_cola_padre(plan.cola_padre, plan.subida_mbps, plan.bajada_mbps)
+            if perfil.get('status') == 'error':
+                raise serializers.ValidationError({"mikrotik_error": perfil.get('message')})
+            if cola.get('status') == 'error':
+                raise serializers.ValidationError({"mikrotik_error": cola.get('message')})
+        return Response({"plan": PlanVelocidadSerializer(plan).data, "mikrotik_status": perfil, "cola_padre_status": cola})
+
+
+@extend_schema(tags=['Clientes DHCP e IP fija'])
+class ClienteRedViewSet(viewsets.ModelViewSet):
+    queryset = ClienteRed.objects.select_related('router', 'plan').all()
+    serializer_class = ClienteRedSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter]
+    filterset_fields = ['estado', 'router', 'plan', 'tipo']
+    search_fields = ['nombre', 'direccion_ip', 'direccion_mac']
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        cliente = serializer.save()
+        resultado = MikroTikService(cliente.router).sincronizar_cola_cliente_red(cliente)
+        if resultado.get('status') == 'error':
+            cliente.delete()
+            return Response({"mikrotik_error": resultado.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response({"cliente": serializer.data, "mikrotik_status": resultado}, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        cliente = self.get_object()
+        serializer = self.get_serializer(cliente, data=request.data, partial=kwargs.get('partial', False))
+        serializer.is_valid(raise_exception=True)
+        cliente = serializer.save()
+        resultado = MikroTikService(cliente.router).sincronizar_cola_cliente_red(cliente)
+        if resultado.get('status') == 'error':
+            return Response({"mikrotik_error": resultado.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response({"cliente": ClienteRedSerializer(cliente).data, "mikrotik_status": resultado})
+
+    def destroy(self, request, *args, **kwargs):
+        cliente = self.get_object()
+        resultado = MikroTikService(cliente.router).eliminar_cola_cliente_red(cliente)
+        if resultado.get('status') == 'error':
+            return Response({"mikrotik_error": resultado.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
+        cliente.delete()
+        return Response({"message": "Cliente y cola eliminados", "mikrotik_status": resultado})
+
+    @extend_schema(summary="Crear o reparar la cola del cliente", tags=['Clientes DHCP e IP fija'])
+    @action(detail=True, methods=['post'], url_path='crear-cola')
+    def crear_cola(self, request, pk=None):
+        cliente = self.get_object()
+        resultado = MikroTikService(cliente.router).sincronizar_cola_cliente_red(cliente)
+        code = status.HTTP_200_OK if resultado.get('status') == 'success' else status.HTTP_502_BAD_GATEWAY
+        return Response(resultado, status=code)

@@ -1,6 +1,6 @@
 import re
 from rest_framework import serializers
-from .models import ClientePPPoE, PlanVelocidad, Router
+from .models import ClientePPPoE, ClienteRed, PlanVelocidad, Router
 
 
 class RouterSerializer(serializers.ModelSerializer):
@@ -13,7 +13,7 @@ class RouterSerializer(serializers.ModelSerializer):
 class ClientePPPoESerializer(serializers.ModelSerializer):
     # Declaramos explícitamente los campos para poder aplicar estilos de lectura en las respuestas
     router_nombre = serializers.CharField(source='router.nombre', read_only=True)
-    plan_nombre = serializers.CharField(source='plan.nombre', read_only=True)
+    plan_nombre = serializers.CharField(source='plan.nombre_perfil', read_only=True)
 
     class Meta:
         model = ClientePPPoE
@@ -60,4 +60,25 @@ class ClientePPPoESerializer(serializers.ModelSerializer):
 class PlanVelocidadSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlanVelocidad
-        fields = '__all__'  # Esto expondrá id, nombre, nombre_perfil, etc.
+        fields = '__all__'
+
+
+class ClienteRedSerializer(serializers.ModelSerializer):
+    router_nombre = serializers.CharField(source='router.nombre', read_only=True)
+    plan_nombre = serializers.CharField(source='plan.nombre_perfil', read_only=True)
+
+    class Meta:
+        model = ClienteRed
+        fields = '__all__'
+
+    def validate(self, data):
+        router = data.get('router') or getattr(self.instance, 'router', None)
+        plan = data.get('plan') or getattr(self.instance, 'plan', None)
+        if router and plan and plan.router_id != router.id:
+            raise serializers.ValidationError({"plan": "El plan seleccionado pertenece a otro router."})
+        if data.get('direccion_mac', getattr(self.instance, 'direccion_mac', '')).strip():
+            mac = data.get('direccion_mac', self.instance.direccion_mac if self.instance else '')
+            partes = mac.lower().split(':')
+            if len(partes) != 6 or any(len(p) != 2 or not all(c in '0123456789abcdef' for c in p) for p in partes):
+                raise serializers.ValidationError({"direccion_mac": "Formato MAC inválido. Use XX:XX:XX:XX:XX:XX."})
+        return data

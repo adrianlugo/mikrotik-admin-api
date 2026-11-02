@@ -102,6 +102,21 @@ python manage.py runserver
 6. Usar `POST /api/routers/{id}/sincronizar/` cuando se requiera reconciliar datos existentes.
 7. Consultar sesiones con `GET /api/clientes-pppoe/activos/`.
 
+## Gestión DHCP, IP fija, colas y consumo
+
+Además de PPPoE existe una API para clientes identificados por IP/MAC:
+
+| Método | Endpoint | Para qué sirve |
+|---|---|---|
+| `GET/POST` | `/api/clientes-red/` | Lista o registra clientes DHCP o IP fija. |
+| `GET/PUT/PATCH/DELETE` | `/api/clientes-red/{id}/` | Consulta, modifica o elimina el cliente y su cola. |
+| `POST` | `/api/clientes-red/{id}/crear-cola/` | Crea o repara la cola simple del cliente. |
+| `GET` | `/api/routers/{id}/consumo/` | Muestra las colas y estadísticas disponibles del router. |
+| `GET` | `/api/routers/{id}/dhcp-leases/` | Lista leases dinámicos y estáticos DHCP. |
+| `POST` | `/api/routers/{id}/reparar-colas/` | Crea colas faltantes para clientes DHCP/IP fija. |
+
+Cada plan puede guardar `cola_padre`. Django crea esa cola en `/queue/simple`; los clientes DHCP/IP fija quedan debajo mediante `parent`. Para PPPoE, el mismo plan se aplica por el profile PPPoE y puede asociarse al parent queue mediante `parent-queue` cuando el RouterOS lo admite.
+
 ## Sincronización
 
 La sincronización completa se describe en [docs/synchronization.md](docs/synchronization.md).
