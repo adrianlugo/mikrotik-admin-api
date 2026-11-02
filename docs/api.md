@@ -1,0 +1,117 @@
+# Catálogo de la API
+
+La URL base es `http://127.0.0.1:8000/api/`. Swagger está disponible en `/api/docs/` y el esquema OpenAPI en `/api/schema/`.
+
+## Autenticación y permisos
+
+Todos los endpoints operativos requieren autenticación por token o sesión. Obtén un token con:
+
+```http
+POST /api/token/
+Content-Type: application/json
+
+{"username": "usuario", "password": "clave"}
+```
+
+Envía el resultado en las solicitudes posteriores:
+
+```http
+Authorization: Token TU_TOKEN
+```
+
+Roles disponibles:
+
+- **Administrador:** acceso completo.
+- **Técnico/Soporte:** lectura y acciones operativas configuradas.
+- **Solo lectura:** consulta información sin modificarla.
+
+## Routers
+
+| Método | Endpoint | Descripción |
+|---|---|---|
+| `GET` | `/api/routers/` | Lista routers registrados. |
+| `POST` | `/api/routers/` | Registra un router. |
+| `GET` | `/api/routers/{id}/` | Consulta un router. |
+| `PUT` | `/api/routers/{id}/` | Reemplaza la configuración del router. |
+| `PATCH` | `/api/routers/{id}/` | Modifica campos del router. |
+| `DELETE` | `/api/routers/{id}/` | Elimina un router sin dependencias protegidas. |
+| `POST` | `/api/routers/{id}/verificar-conexion/` | Prueba la API y consulta modelo, versión y uptime. |
+| `GET` | `/api/routers/{id}/estado/` | Muestra conexión y registros asociados. |
+| `POST` | `/api/routers/{id}/sincronizar/` | Sincroniza PPPoE y planes de ese router con Django. |
+| `GET` | `/api/routers/{id}/consumo/` | Consulta colas simples y contadores. |
+| `GET` | `/api/routers/{id}/dhcp-leases/` | Lista leases DHCP dinámicos y estáticos. |
+| `POST` | `/api/routers/{id}/reparar-colas/` | Repara las colas de clientes DHCP/IP fija. |
+
+## Planes
+
+| Método | Endpoint | Descripción |
+|---|---|---|
+| `GET` | `/api/planes/` | Lista planes locales. |
+| `POST` | `/api/planes/` | Crea el plan local, profile PPPoE y cola padre. |
+| `GET` | `/api/planes/{id}/` | Consulta un plan. |
+| `PUT/PATCH` | `/api/planes/{id}/` | Actualiza el plan y RouterOS. |
+| `DELETE` | `/api/planes/{id}/` | Elimina el plan si no tiene clientes asociados. |
+
+## Clientes PPPoE
+
+| Método | Endpoint | Descripción |
+|---|---|---|
+| `GET` | `/api/clientes-pppoe/` | Lista clientes PPPoE. |
+| `POST` | `/api/clientes-pppoe/` | Crea el cliente y su secreto RouterOS. |
+| `GET` | `/api/clientes-pppoe/{id}/` | Consulta un cliente. |
+| `PUT/PATCH` | `/api/clientes-pppoe/{id}/` | Actualiza localmente y en RouterOS. |
+| `DELETE` | `/api/clientes-pppoe/{id}/` | Elimina secreto y registro local. |
+| `GET` | `/api/clientes-pppoe/activos/` | Lista conexiones PPP activas. El router utilizado debe revisarse en el futuro para permitir selección explícita. |
+| `POST` | `/api/clientes-pppoe/{id}/cambiar-estado/` | Activa o suspende el cliente. |
+| `POST` | `/api/clientes-pppoe/{id}/ping/` | Ejecuta ping desde el router hacia la IP indicada o la IP de antena. |
+| `POST` | `/api/clientes-pppoe/{id}/patear/` | Desconecta las sesiones PPP activas del usuario. |
+
+## Clientes DHCP e IP fija
+
+| Método | Endpoint | Descripción |
+|---|---|---|
+| `GET` | `/api/clientes-red/` | Lista clientes DHCP/IP fija. |
+| `POST` | `/api/clientes-red/` | Crea cliente, reserva DHCP o ARP estática y cola hijo. |
+| `GET` | `/api/clientes-red/{id}/` | Consulta un cliente. |
+| `PUT/PATCH` | `/api/clientes-red/{id}/` | Actualiza datos locales, reserva y cola. |
+| `DELETE` | `/api/clientes-red/{id}/` | Elimina cola, reserva y registro local. |
+| `POST` | `/api/clientes-red/{id}/crear-cola/` | Repara reserva de red y cola simple. |
+
+## Facturación
+
+| Método | Endpoint | Descripción |
+|---|---|---|
+| `GET/POST` | `/api/facturas/` | Lista o crea facturas mensuales. |
+| `GET/PUT/PATCH/DELETE` | `/api/facturas/{id}/` | Gestiona una factura. |
+| `GET/POST` | `/api/pagos/` | Lista o registra pagos. |
+| `GET/PUT/PATCH/DELETE` | `/api/pagos/{id}/` | Gestiona un pago existente. |
+
+Los pagos creados mediante la API quedan asociados al usuario autenticado en `registrado_por`. Al acumularse el monto total, la factura debe marcarse como pagada.
+
+## Portal público
+
+```http
+GET /api/portal/{token}/
+```
+
+El token es privado y pertenece al cliente. Esta ruta usa `AllowAny`, pero debe distribuirse solamente por canales controlados. Devuelve una vista limitada del estado del servicio, sin datos operativos ni credenciales.
+
+## Comandos administrativos
+
+Los siguientes comandos Django deben ejecutarse manualmente o mediante una tarea programada del sistema:
+
+```powershell
+python manage.py cortar_facturas_vencidas
+```
+
+Marca las facturas pendientes vencidas y suspende una vez los clientes PPPoE cuyo pago siga pendiente.
+
+## Convenciones HTTP
+
+- `GET`: consulta sin modificar.
+- `POST`: crea o ejecuta una acción.
+- `PUT`: reemplaza un recurso completo.
+- `PATCH`: modifica campos indicados.
+- `DELETE`: elimina un recurso.
+
+Los errores RouterOS se devuelven normalmente como error de integración `502 Bad Gateway` y los datos locales se conservan o se revierten según la operación.

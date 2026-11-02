@@ -30,6 +30,8 @@ Contiene los datos que deben persistir localmente:
 - Plan de velocidad.
 - Cliente PPPoE.
 - Cliente DHCP/IP fija.
+- Perfil operativo y rol de usuario.
+- Factura y pago.
 
 Los datos locales deben representar lo que el ISP desea configurar. Las IDs y estadísticas temporales de RouterOS no deben reemplazar este modelo de negocio.
 
@@ -137,18 +139,26 @@ ConsumoCola
 - fecha/hora
 ```
 
-## Roadmap de crecimiento
+## Estado de evolución
 
-1. Completar CRUD DHCP/IP fija y pruebas de colas.
-2. Añadir inventario de diferencias antes de sincronizar.
-3. Guardar consumo histórico en intervalos periódicos.
-4. Añadir tarea automática configurable para sincronización y monitoreo.
-5. Añadir autenticación, permisos y roles por operador.
-6. Proteger credenciales mediante cifrado o un almacén de secretos.
-7. Añadir registro de auditoría de cambios manuales y automáticos.
-8. Añadir filtros, búsqueda y paginación a recursos operativos.
-9. Implementar métricas, alertas y panel web separado.
-10. Separar servicios RouterOS por dominios cuando crezca el proyecto: PPPoE, IP, colas, firewall y sistema.
+Ya implementado:
+
+1. CRUD DHCP/IP fija y reservas RouterOS.
+2. Autenticación por token y roles operativos.
+3. Facturación, pagos y corte de facturas vencidas.
+4. Diagnóstico por ping y desconexión PPPoE.
+5. Portal limitado por token.
+6. Sincronización manual por router específico.
+
+Pendiente para consolidar:
+
+1. Añadir inventario visual de diferencias antes de sincronizar.
+2. Guardar consumo histórico en intervalos periódicos.
+3. Programar y supervisar tareas automáticas.
+4. Proteger credenciales mediante cifrado o un almacén de secretos.
+5. Añadir auditoría completa de cambios manuales y automáticos.
+6. Implementar métricas, alertas y panel web separado.
+7. Separar servicios RouterOS por dominios cuando crezca el proyecto: PPPoE, IP, colas, firewall y sistema.
 
 ## Límites del modelo comercial futuro
 
