@@ -328,6 +328,9 @@ paths:
   /api/clientes-red/:
     get:
       operationId: clientes_red_list
+      description: Lista los clientes de red registrados y permite filtrar por router,
+        plan, tipo y estado.
+      summary: Listar clientes DHCP e IP fija
       parameters:
       - in: query
         name: estado
@@ -364,7 +367,7 @@ paths:
           * `dhcp` - DHCP
           * `ip_fija` - IP fija
       tags:
-      - clientes-red
+      - Clientes DHCP e IP fija
       security:
       - tokenAuth: []
       - cookieAuth: []
@@ -379,8 +382,11 @@ paths:
           description: ''
     post:
       operationId: clientes_red_create
+      description: Crea el registro, sincroniza una reserva DHCP o ARP estática y
+        genera la cola simple del cliente.
+      summary: Crear un cliente DHCP o IP fija
       tags:
-      - clientes-red
+      - Clientes DHCP e IP fija
       requestBody:
         content:
           application/json:
@@ -406,6 +412,9 @@ paths:
   /api/clientes-red/{id}/:
     get:
       operationId: clientes_red_retrieve
+      description: Obtiene el registro y los datos de reserva, plan, dirección IP/MAC,
+        cola y estado.
+      summary: Consultar un cliente DHCP o IP fija
       parameters:
       - in: path
         name: id
@@ -414,7 +423,7 @@ paths:
         description: A unique integer value identifying this cliente red.
         required: true
       tags:
-      - clientes-red
+      - Clientes DHCP e IP fija
       security:
       - tokenAuth: []
       - cookieAuth: []
@@ -427,6 +436,9 @@ paths:
           description: ''
     put:
       operationId: clientes_red_update
+      description: Reemplaza los datos editables y vuelve a sincronizar reserva, cola,
+        límites y estado.
+      summary: Actualizar completamente un cliente de red
       parameters:
       - in: path
         name: id
@@ -435,7 +447,7 @@ paths:
         description: A unique integer value identifying this cliente red.
         required: true
       tags:
-      - clientes-red
+      - Clientes DHCP e IP fija
       requestBody:
         content:
           application/json:
@@ -460,6 +472,8 @@ paths:
           description: ''
     patch:
       operationId: clientes_red_partial_update
+      description: Modifica los campos enviados y sincroniza reserva y cola correspondientes.
+      summary: Actualizar parcialmente un cliente de red
       parameters:
       - in: path
         name: id
@@ -468,7 +482,7 @@ paths:
         description: A unique integer value identifying this cliente red.
         required: true
       tags:
-      - clientes-red
+      - Clientes DHCP e IP fija
       requestBody:
         content:
           application/json:
@@ -492,6 +506,9 @@ paths:
           description: ''
     delete:
       operationId: clientes_red_destroy
+      description: Elimina primero la cola y la reserva de RouterOS; después elimina
+        el registro local si ambas operaciones tuvieron éxito.
+      summary: Eliminar un cliente DHCP o IP fija
       parameters:
       - in: path
         name: id
@@ -500,7 +517,7 @@ paths:
         description: A unique integer value identifying this cliente red.
         required: true
       tags:
-      - clientes-red
+      - Clientes DHCP e IP fija
       security:
       - tokenAuth: []
       - cookieAuth: []
@@ -547,9 +564,9 @@ paths:
   /api/facturas/:
     get:
       operationId: facturas_list
-      description: Lista los clientes de red registrados. Permite filtrar por router,
-        plan, tipo y estado; y buscar por nombre, IP o MAC.
-      summary: Listar clientes DHCP e IP fija
+      description: Lista facturas con cliente, período, monto, vencimiento y estado.
+        Permite controlar saldos pendientes y vencidos.
+      summary: Listar facturas
       parameters:
       - name: search
         required: false
@@ -558,7 +575,7 @@ paths:
         schema:
           type: string
       tags:
-      - Clientes DHCP e IP fija
+      - Facturación
       security:
       - tokenAuth: []
       - cookieAuth: []
@@ -573,11 +590,11 @@ paths:
           description: ''
     post:
       operationId: facturas_create
-      description: Registra el cliente y crea inmediatamente una cola simple en su
-        router. La cola se ancla al cola_padre del plan cuando está configurada.
-      summary: Crear un cliente DHCP o IP fija
+      description: Registra una factura mensual para un cliente. No debe existir otra
+        factura del mismo período para ese cliente.
+      summary: Crear una factura
       tags:
-      - Clientes DHCP e IP fija
+      - Facturación
       requestBody:
         content:
           application/json:
@@ -603,9 +620,8 @@ paths:
   /api/facturas/{id}/:
     get:
       operationId: facturas_retrieve
-      description: Obtiene el registro, su plan, dirección IP/MAC, estado y nombre
-        de la cola administrada en RouterOS.
-      summary: Consultar un cliente DHCP o IP fija
+      description: Obtiene los datos completos de una factura y su cliente asociado.
+      summary: Consultar una factura
       parameters:
       - in: path
         name: id
@@ -614,7 +630,7 @@ paths:
         description: A unique integer value identifying this factura.
         required: true
       tags:
-      - Clientes DHCP e IP fija
+      - Facturación
       security:
       - tokenAuth: []
       - cookieAuth: []
@@ -627,9 +643,8 @@ paths:
           description: ''
     put:
       operationId: facturas_update
-      description: Reemplaza los datos editables y vuelve a sincronizar target, límites,
-        estado y parent de la cola.
-      summary: Actualizar completamente un cliente de red
+      description: Reemplaza los datos editables de una factura.
+      summary: Actualizar una factura
       parameters:
       - in: path
         name: id
@@ -638,7 +653,7 @@ paths:
         description: A unique integer value identifying this factura.
         required: true
       tags:
-      - Clientes DHCP e IP fija
+      - Facturación
       requestBody:
         content:
           application/json:
@@ -663,9 +678,8 @@ paths:
           description: ''
     patch:
       operationId: facturas_partial_update
-      description: Modifica únicamente los campos enviados y sincroniza después la
-        cola correspondiente.
-      summary: Actualizar parcialmente un cliente de red
+      description: Modifica solamente los campos enviados de una factura.
+      summary: Actualizar parcialmente una factura
       parameters:
       - in: path
         name: id
@@ -674,7 +688,7 @@ paths:
         description: A unique integer value identifying this factura.
         required: true
       tags:
-      - Clientes DHCP e IP fija
+      - Facturación
       requestBody:
         content:
           application/json:
@@ -698,9 +712,9 @@ paths:
           description: ''
     delete:
       operationId: facturas_destroy
-      description: Elimina primero la cola simple de RouterOS; el registro local solo
-        se elimina si la operación termina correctamente.
-      summary: Eliminar cliente DHCP o IP fija
+      description: Elimina la factura si las restricciones de integridad de Django
+        lo permiten.
+      summary: Eliminar una factura
       parameters:
       - in: path
         name: id
@@ -709,7 +723,7 @@ paths:
         description: A unique integer value identifying this factura.
         required: true
       tags:
-      - Clientes DHCP e IP fija
+      - Facturación
       security:
       - tokenAuth: []
       - cookieAuth: []
@@ -1436,8 +1450,11 @@ paths:
   /api/token/:
     post:
       operationId: token_create
+      description: 'Valida usuario y contraseña y devuelve el token Bearer de Django
+        REST Framework. Envíe el valor como ''Authorization: Token <token>''.'
+      summary: Obtener token de acceso
       tags:
-      - token
+      - Autenticación
       requestBody:
         content:
           application/x-www-form-urlencoded:
@@ -1453,6 +1470,7 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
+      - {}
       responses:
         '200':
           content:

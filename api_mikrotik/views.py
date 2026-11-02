@@ -3,6 +3,7 @@ from rest_framework import viewsets, status, serializers
 from rest_framework.response import Response
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import AllowAny
+from rest_framework.authtoken.views import ObtainAuthToken
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter
 from drf_spectacular.utils import extend_schema, inline_serializer, extend_schema_view
@@ -395,38 +396,6 @@ class PlanVelocidadViewSet(viewsets.ModelViewSet):
 
 
 @extend_schema_view(
-    list=extend_schema(
-        summary="Listar clientes DHCP e IP fija",
-        description="Lista los clientes de red registrados. Permite filtrar por router, plan, tipo y estado; y buscar por nombre, IP o MAC.",
-        tags=['Clientes DHCP e IP fija'],
-    ),
-    retrieve=extend_schema(
-        summary="Consultar un cliente DHCP o IP fija",
-        description="Obtiene el registro, su plan, dirección IP/MAC, estado y nombre de la cola administrada en RouterOS.",
-        tags=['Clientes DHCP e IP fija'],
-    ),
-    create=extend_schema(
-        summary="Crear un cliente DHCP o IP fija",
-        description="Registra el cliente y crea inmediatamente una cola simple en su router. La cola se ancla al cola_padre del plan cuando está configurada.",
-        tags=['Clientes DHCP e IP fija'],
-    ),
-    update=extend_schema(
-        summary="Actualizar completamente un cliente de red",
-        description="Reemplaza los datos editables y vuelve a sincronizar target, límites, estado y parent de la cola.",
-        tags=['Clientes DHCP e IP fija'],
-    ),
-    partial_update=extend_schema(
-        summary="Actualizar parcialmente un cliente de red",
-        description="Modifica únicamente los campos enviados y sincroniza después la cola correspondiente.",
-        tags=['Clientes DHCP e IP fija'],
-    ),
-    destroy=extend_schema(
-        summary="Eliminar cliente DHCP o IP fija",
-        description="Elimina primero la cola simple de RouterOS; el registro local solo se elimina si la operación termina correctamente.",
-        tags=['Clientes DHCP e IP fija'],
-    ),
-)
-@extend_schema_view(
     list=extend_schema(summary="Listar facturas", description="Lista facturas con cliente, período, monto, vencimiento y estado. Permite controlar saldos pendientes y vencidos.", tags=['Facturación']),
     retrieve=extend_schema(summary="Consultar una factura", description="Obtiene los datos completos de una factura y su cliente asociado.", tags=['Facturación']),
     create=extend_schema(summary="Crear una factura", description="Registra una factura mensual para un cliente. No debe existir otra factura del mismo período para ese cliente.", tags=['Facturación']),
@@ -477,6 +446,15 @@ class PagoViewSet(viewsets.ModelViewSet):
 
 
 @extend_schema(
+    summary="Obtener token de acceso",
+    description="Valida usuario y contraseña y devuelve el token Bearer de Django REST Framework. Envíe el valor como 'Authorization: Token <token>'.",
+    tags=['Autenticación'],
+)
+class ObtenerTokenView(ObtainAuthToken):
+    permission_classes = [AllowAny]
+
+
+@extend_schema(
     summary="Consultar estado público del cliente",
     description="Consulta limitada por token privado para mostrar el estado de servicio y el aviso de suspensión.",
     responses={200: inline_serializer(name='PortalClienteResponse', fields={'cliente': serializers.CharField(), 'estado': serializers.CharField(), 'servicio': serializers.CharField(), 'mensaje': serializers.CharField()}), 404: None},
@@ -498,6 +476,14 @@ def portal_cliente(request, token):
     })
 
 
+@extend_schema_view(
+    list=extend_schema(summary="Listar clientes DHCP e IP fija", description="Lista los clientes de red registrados y permite filtrar por router, plan, tipo y estado.", tags=['Clientes DHCP e IP fija']),
+    retrieve=extend_schema(summary="Consultar un cliente DHCP o IP fija", description="Obtiene el registro y los datos de reserva, plan, dirección IP/MAC, cola y estado.", tags=['Clientes DHCP e IP fija']),
+    create=extend_schema(summary="Crear un cliente DHCP o IP fija", description="Crea el registro, sincroniza una reserva DHCP o ARP estática y genera la cola simple del cliente.", tags=['Clientes DHCP e IP fija']),
+    update=extend_schema(summary="Actualizar completamente un cliente de red", description="Reemplaza los datos editables y vuelve a sincronizar reserva, cola, límites y estado.", tags=['Clientes DHCP e IP fija']),
+    partial_update=extend_schema(summary="Actualizar parcialmente un cliente de red", description="Modifica los campos enviados y sincroniza reserva y cola correspondientes.", tags=['Clientes DHCP e IP fija']),
+    destroy=extend_schema(summary="Eliminar un cliente DHCP o IP fija", description="Elimina primero la cola y la reserva de RouterOS; después elimina el registro local si ambas operaciones tuvieron éxito.", tags=['Clientes DHCP e IP fija']),
+)
 class ClienteRedViewSet(viewsets.ModelViewSet):
     queryset = ClienteRed.objects.select_related('router', 'plan').all()
     serializer_class = ClienteRedSerializer

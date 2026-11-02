@@ -1,7 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from rest_framework.authtoken.views import obtain_auth_token
-from .views import ClientePPPoEViewSet, ClienteRedViewSet, FacturaViewSet, PagoViewSet, PlanVelocidadViewSet, RouterViewSet, portal_cliente
+from .views import ClientePPPoEViewSet, ClienteRedViewSet, FacturaViewSet, ObtenerTokenView, PagoViewSet, PlanVelocidadViewSet, RouterViewSet, portal_cliente
 
 # El router de REST Framework genera las rutas automáticas
 router = DefaultRouter()
@@ -13,7 +12,7 @@ router.register(r'facturas', FacturaViewSet, basename='factura')
 router.register(r'pagos', PagoViewSet, basename='pago')
 
 urlpatterns = [
-    path('token/', obtain_auth_token, name='api-token'),
+    path('token/', ObtenerTokenView.as_view(), name='api-token'),
     path('portal/<str:token>/', portal_cliente, name='portal-cliente'),
     path('', include(router.urls)),
 ]
