@@ -1,5 +1,4 @@
-from django.db import transaction  # <--- Importante para asegurar la atomicidad de la BD
-from django.utils.decorators import method_decorator
+from django.db import transaction
 from rest_framework import viewsets, status, serializers
 from rest_framework.response import Response
 from rest_framework.decorators import action
@@ -7,8 +6,8 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter
 from drf_spectacular.utils import extend_schema, inline_serializer, extend_schema_view
 
-from .models import ClientePPPoE
-from .serializers import ClientePPPoESerializer
+from .models import ClientePPPoE, PlanVelocidad, Router
+from .serializers import ClientePPPoESerializer, PlanVelocidadSerializer
 from .services import MikroTikService
 
 @extend_schema_view(
@@ -67,7 +66,6 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='activos')
     def listar_activos(self, request):
         """Endpoint para consultar el estado en tiempo real del MikroTik"""
-        from .models import Router
         router_principal = Router.objects.first()
         
         if not router_principal:
@@ -81,6 +79,33 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
             "total_conectados": len(usuarios_activos),
             "conexiones": usuarios_activos
         }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='sincronizar')
+    def sincronizar(self, request):
+        """Sincroniza en las dos direcciones el primer router configurado."""
+        return self._ejecutar_sincronizacion()
+
+    @action(detail=False, methods=['post'], url_path='importar-desde-mikrotik')
+    def importar_desde_mikrotik(self, request):
+        """Ruta compatible con versiones anteriores; ejecuta sincronización bi-direccional."""
+        return self._ejecutar_sincronizacion()
+
+    def _ejecutar_sincronizacion(self):
+        router_principal = Router.objects.first()
+        
+        if not router_principal:
+            return Response({"error": "No hay ningún router registrado"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        mikrotik_service = MikroTikService(router_principal)
+        resultado = mikrotik_service.importar_secretos_hacia_django()
+        
+        if resultado.get("status") == "success":
+            return Response({
+                "message": resultado.get("message"),
+                "details": resultado.get("details", {}),
+            }, status=status.HTTP_200_OK)
+        return Response({"error": resultado.get("message")}, status=status.HTTP_502_BAD_GATEWAY)
+
     
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -209,3 +234,43 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
             "mikrotik_status": resultado,
             "cliente_estado": cliente.estado
         }, status=status.HTTP_200_OK)
+
+class PlanVelocidadViewSet(viewsets.ModelViewSet): # 🌟 Cambiado a ModelViewSet para permitir POST
+    queryset = PlanVelocidad.objects.all()
+    serializer_class = PlanVelocidadSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Obtenemos las velocidades explícitas que envíe el formulario web
+        # Formato esperado: ej: "5M", "10M"
+        subida = request.data.get('subida_mb', '5M')
+        bajada = request.data.get('bajada_mb', '10M')
+        
+        with transaction.atomic():
+            # 1. Guardamos el Plan en la base de datos de Django
+            plan = serializer.save()
+            
+            # 2. Tomamos el primer router configurado para crearle el perfil
+            router_principal = Router.objects.first()
+            if not router_principal:
+                raise serializers.ValidationError({"error": "No hay routers configurados para asignar el perfil"})
+            
+            # 3. Mandamos la instrucción al MikroTik real para crear el Profile
+            mikrotik_service = MikroTikService(router_principal)
+            resultado = mikrotik_service.crear_perfil_velocidad(
+                nombre_perfil=plan.nombre_perfil,
+                subida=subida,
+                bajada=bajada
+            )
+            
+            # Si el MikroTik rechaza el perfil (ej: nombre duplicado o sintaxis inválida), hacemos rollback en Django
+            if resultado.get("status") == "error":
+                raise serializers.ValidationError({"mikrotik_error": resultado.get("message")})
+
+        headers = self.get_success_headers(serializer.data)
+        return Response({
+            "plan": serializer.data,
+            "mikrotik_status": resultado
+        }, status=status.HTTP_201_CREATED, headers=headers)

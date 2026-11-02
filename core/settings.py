@@ -135,7 +135,7 @@ MAILERS = {
 }
 
 # Activa el modo simulación para desarrollar sin un MikroTik físico conectado
-MIKROTIK_SIMULATION_MODE = True
+MIKROTIK_SIMULATION_MODE = False
 
 REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',

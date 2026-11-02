@@ -1,6 +1,6 @@
 import re
 from rest_framework import serializers
-from .models import ClientePPPoE
+from .models import ClientePPPoE, PlanVelocidad
 
 class ClientePPPoESerializer(serializers.ModelSerializer):
     # Declaramos explícitamente los campos para poder aplicar estilos de lectura en las respuestas
@@ -48,3 +48,8 @@ class ClientePPPoESerializer(serializers.ModelSerializer):
                 "router": "No se puede activar un cliente en un router que está marcado como fuera de servicio."
             })
         return data
+
+class PlanVelocidadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlanVelocidad
+        fields = '__all__'  # Esto expondrá id, nombre, nombre_perfil, etc.
