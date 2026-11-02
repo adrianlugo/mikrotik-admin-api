@@ -4,7 +4,7 @@ API desarrollada con Django REST Framework para administrar clientes PPPoE y pla
 
 ## Funcionalidades principales
 
-- Administración de routers MikroTik desde Django Admin.
+- Administración de routers MikroTik por API y Django Admin.
 - CRUD de planes de velocidad.
 - CRUD de clientes PPPoE.
 - Creación, actualización, eliminación y suspensión de secretos PPPoE.
@@ -44,16 +44,63 @@ python manage.py runserver
 - Schema OpenAPI: `http://127.0.0.1:8000/api/schema/`
 - Administración: `http://127.0.0.1:8000/admin/`
 
-## Endpoints principales
+## Catálogo de endpoints funcionales
 
-| Método | Endpoint | Descripción |
+### Routers MikroTik
+
+| Método | Endpoint | Para qué sirve |
 |---|---|---|
-| `GET, POST` | `/api/planes/` | Consultar o crear planes. |
-| `GET, POST` | `/api/clientes-pppoe/` | Consultar o crear clientes. |
-| `GET` | `/api/clientes-pppoe/activos/` | Consultar sesiones PPP activas. |
-| `POST` | `/api/clientes-pppoe/sincronizar/` | Sincronizar Django con MikroTik en ambos sentidos. |
-| `POST` | `/api/clientes-pppoe/importar-desde-mikrotik/` | Ruta compatible que ejecuta sincronización cruzada. |
-| `POST` | `/api/clientes-pppoe/{id}/cambiar-estado/` | Activar o suspender un cliente. |
+| `GET` | `/api/routers/` | Lista todos los routers registrados. |
+| `POST` | `/api/routers/` | Registra un router, su IP, puerto API y credenciales. |
+| `GET` | `/api/routers/{id}/` | Consulta la configuración de un router. |
+| `PUT` | `/api/routers/{id}/` | Reemplaza toda la configuración del router. |
+| `PATCH` | `/api/routers/{id}/` | Modifica solo los campos enviados. |
+| `DELETE` | `/api/routers/{id}/` | Elimina el router local si sus registros relacionados lo permiten. |
+| `POST` | `/api/routers/{id}/verificar-conexion/` | Prueba acceso API y obtiene modelo, versión y uptime. |
+| `GET` | `/api/routers/{id}/estado/` | Muestra disponibilidad y cantidad de planes y clientes asociados. |
+| `POST` | `/api/routers/{id}/sincronizar/` | Sincroniza este router con Django en los dos sentidos. Endpoint recomendado. |
+
+### Planes de velocidad
+
+| Método | Endpoint | Para qué sirve |
+|---|---|---|
+| `GET` | `/api/planes/` | Lista los planes locales. Permite filtros de DRF si están configurados. |
+| `POST` | `/api/planes/` | Guarda el plan y crea/actualiza su profile PPP en el router indicado. |
+| `GET` | `/api/planes/{id}/` | Consulta un plan y sus velocidades. |
+| `PUT/PATCH` | `/api/planes/{id}/` | Actualiza el plan local. |
+| `DELETE` | `/api/planes/{id}/` | Elimina el plan si ningún cliente protegido lo usa. |
+
+### Clientes PPPoE
+
+| Método | Endpoint | Para qué sirve |
+|---|---|---|
+| `GET` | `/api/clientes-pppoe/` | Lista clientes. Permite filtros por estado, router y plan y búsqueda por usuario o nombre. |
+| `POST` | `/api/clientes-pppoe/` | Guarda el cliente y crea su secreto PPPoE en el router. |
+| `GET` | `/api/clientes-pppoe/{id}/` | Consulta los datos de un cliente. |
+| `PUT/PATCH` | `/api/clientes-pppoe/{id}/` | Modifica el cliente local y lo actualiza en RouterOS. |
+| `DELETE` | `/api/clientes-pppoe/{id}/` | Elimina el secreto del router y luego elimina el cliente local si la operación tuvo éxito. |
+| `POST` | `/api/clientes-pppoe/{id}/cambiar-estado/` | Cambia entre `activo` y `suspendido`; el perfil de corte por ahora debe llamarse `Perfil_Corte`. |
+| `GET` | `/api/clientes-pppoe/activos/` | Lista nombres de usuarios con sesión PPP activa en el primer router configurado. |
+| `POST` | `/api/clientes-pppoe/sincronizar/` | Sincroniza usando el primer router. Se conserva por facilidad, pero el endpoint por router es preferible. |
+| `POST` | `/api/clientes-pppoe/importar-desde-mikrotik/` | Ruta antigua de compatibilidad; ejecuta la misma sincronización bidireccional que el endpoint moderno. |
+
+### Qué método HTTP usar
+
+- `GET`: consulta datos sin modificar.
+- `POST`: crea datos o ejecuta una acción como sincronizar o verificar conexión.
+- `PUT`: reemplaza todo el recurso.
+- `PATCH`: modifica solamente los campos enviados.
+- `DELETE`: elimina un recurso.
+
+### Flujo recomendado para administrar el router
+
+1. Crear o seleccionar un router con `POST /api/routers/`.
+2. Ejecutar `POST /api/routers/{id}/verificar-conexion/`.
+3. Revisar `GET /api/routers/{id}/estado/`.
+4. Crear planes con `POST /api/planes/`.
+5. Crear clientes con `POST /api/clientes-pppoe/`.
+6. Usar `POST /api/routers/{id}/sincronizar/` cuando se requiera reconciliar datos existentes.
+7. Consultar sesiones con `GET /api/clientes-pppoe/activos/`.
 
 ## Sincronización
 

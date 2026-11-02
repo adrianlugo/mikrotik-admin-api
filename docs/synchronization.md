@@ -6,7 +6,7 @@
 POST /api/clientes-pppoe/sincronizar/
 ```
 
-La ruta histórica `/api/clientes-pppoe/importar-desde-mikrotik/` se conserva por compatibilidad y ejecuta la misma operación.
+La ruta histórica `/api/clientes-pppoe/importar-desde-mikrotik/` se conserva por compatibilidad y ejecuta la misma operación. Para operaciones nuevas, preferir `/api/routers/{id}/sincronizar/`.
 
 ## Qué sincroniza
 
