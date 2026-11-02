@@ -447,7 +447,7 @@ class PagoViewSet(viewsets.ModelViewSet):
 
 @extend_schema(
     summary="Obtener token de acceso",
-    description="Valida usuario y contraseña y devuelve el token Bearer de Django REST Framework. Envíe el valor como 'Authorization: Token <token>'.",
+    description="Valida usuario y contraseña y devuelve el token de Django REST Framework. Envíe el valor como 'Authorization: Token <token>'.",
     tags=['Autenticación'],
 )
 class ObtenerTokenView(ObtainAuthToken):

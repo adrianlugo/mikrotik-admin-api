@@ -1450,8 +1450,8 @@ paths:
   /api/token/:
     post:
       operationId: token_create
-      description: 'Valida usuario y contraseña y devuelve el token Bearer de Django
-        REST Framework. Envíe el valor como ''Authorization: Token <token>''.'
+      description: 'Valida usuario y contraseña y devuelve el token de Django REST
+        Framework. Envíe el valor como ''Authorization: Token <token>''.'
       summary: Obtener token de acceso
       tags:
       - Autenticación
