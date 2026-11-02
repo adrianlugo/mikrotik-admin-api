@@ -1,6 +1,6 @@
 import re
 from rest_framework import serializers
-from .models import ClientePPPoE, ClienteRed, PlanVelocidad, Router
+from .models import ClientePPPoE, ClienteRed, Factura, Pago, PlanVelocidad, Router
 
 
 class RouterSerializer(serializers.ModelSerializer):
@@ -61,6 +61,21 @@ class PlanVelocidadSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlanVelocidad
         fields = '__all__'
+
+
+class FacturaSerializer(serializers.ModelSerializer):
+    cliente_nombre = serializers.CharField(source='cliente.nombre_completo', read_only=True)
+
+    class Meta:
+        model = Factura
+        fields = '__all__'
+
+
+class PagoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Pago
+        fields = '__all__'
+        read_only_fields = ('registrado_por',)
 
 
 class ClienteRedSerializer(serializers.ModelSerializer):

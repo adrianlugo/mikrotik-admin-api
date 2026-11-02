@@ -1,5 +1,30 @@
 from django.contrib import admin
-from .models import Router, PlanVelocidad, ClientePPPoE, ClienteRed
+from django.contrib.auth.admin import UserAdmin
+from django.contrib.auth.models import User
+
+from .models import (
+    ClientePPPoE,
+    ClienteRed,
+    Factura,
+    Pago,
+    PerfilUsuario,
+    PlanVelocidad,
+    Router,
+)
+
+
+class PerfilUsuarioInline(admin.StackedInline):
+    model = PerfilUsuario
+    can_delete = False
+    verbose_name_plural = 'Perfil operativo'
+
+
+class UsuarioConPerfilAdmin(UserAdmin):
+    inlines = (PerfilUsuarioInline,)
+
+
+admin.site.unregister(User)
+admin.site.register(User, UsuarioConPerfilAdmin)
 
 @admin.register(Router)
 class RouterAdmin(admin.ModelAdmin):
@@ -24,3 +49,25 @@ class ClienteRedAdmin(admin.ModelAdmin):
     list_display = ('nombre', 'tipo', 'direccion_ip', 'direccion_mac', 'router', 'plan', 'cola_mikrotik', 'estado')
     list_filter = ('tipo', 'estado', 'router', 'plan')
     search_fields = ('nombre', 'direccion_ip', 'direccion_mac')
+
+
+@admin.register(PerfilUsuario)
+class PerfilUsuarioAdmin(admin.ModelAdmin):
+    list_display = ('usuario', 'rol')
+    list_filter = ('rol',)
+    search_fields = ('usuario__username', 'usuario__email')
+
+
+@admin.register(Factura)
+class FacturaAdmin(admin.ModelAdmin):
+    list_display = ('id', 'cliente', 'periodo', 'monto', 'fecha_vencimiento', 'estado')
+    list_filter = ('estado', 'periodo')
+    search_fields = ('cliente__nombre_completo', 'cliente__usuario_pppoe')
+    date_hierarchy = 'fecha_vencimiento'
+
+
+@admin.register(Pago)
+class PagoAdmin(admin.ModelAdmin):
+    list_display = ('id', 'factura', 'monto', 'metodo', 'registrado_por', 'registrado_en')
+    list_filter = ('metodo', 'registrado_en')
+    search_fields = ('factura__cliente__nombre_completo', 'referencia')

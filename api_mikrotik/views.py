@@ -1,14 +1,16 @@
 from django.db import transaction
 from rest_framework import viewsets, status, serializers
 from rest_framework.response import Response
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter
 from drf_spectacular.utils import extend_schema, inline_serializer, extend_schema_view
 
-from .models import ClientePPPoE, ClienteRed, PlanVelocidad, Router
-from .serializers import ClientePPPoESerializer, ClienteRedSerializer, PlanVelocidadSerializer, RouterSerializer
+from .models import ClientePPPoE, ClienteRed, Factura, Pago, PlanVelocidad, Router
+from .serializers import ClientePPPoESerializer, ClienteRedSerializer, FacturaSerializer, PagoSerializer, PlanVelocidadSerializer, RouterSerializer
 from .services import MikroTikService
+from .permissions import PermisoOperativo, PuedeOperarClientes
 
 @extend_schema_view(
     list=extend_schema(
@@ -43,8 +45,10 @@ from .services import MikroTikService
     ),
 )
 class ClientePPPoEViewSet(viewsets.ModelViewSet):
-    queryset = ClientePPPoE.objects.all()
+    queryset = ClientePPPoE.objects.select_related('router', 'plan').all()
     serializer_class = ClientePPPoESerializer
+    permission_classes = [PermisoOperativo]
+    permite_tecnico_edicion = True
     
     filter_backends = [DjangoFilterBackend, SearchFilter]
     filterset_fields = ['estado', 'router', 'plan']
@@ -208,6 +212,25 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
             "cliente_estado": cliente.estado
         }, status=status.HTTP_200_OK)
 
+    @extend_schema(summary="Hacer ping desde el router al equipo del cliente", description="Valida una dirección IP y ejecuta el ping desde el MikroTik hacia ella.", tags=['Monitoreo MikroTik'])
+    @action(detail=True, methods=['post'], url_path='ping')
+    def ping(self, request, pk=None):
+        cliente = self.get_object()
+        destino = request.data.get('ip', cliente.direccion_ip_antena)
+        if not destino:
+            return Response({"error": "Configure direccion_ip_antena o envíe ip en el cuerpo."}, status=status.HTTP_400_BAD_REQUEST)
+        resultado = MikroTikService(cliente.router).ping_desde_router(destino)
+        codigo = status.HTTP_200_OK if resultado['status'] == 'success' else status.HTTP_502_BAD_GATEWAY
+        return Response(resultado, status=codigo)
+
+    @extend_schema(summary="Desconectar sesión PPPoE activa", description="Elimina las sesiones activas PPPoE del usuario para obligarlo a autenticarse nuevamente.", tags=['Monitoreo MikroTik'])
+    @action(detail=True, methods=['post'], url_path='patear')
+    def patear(self, request, pk=None):
+        cliente = self.get_object()
+        resultado = MikroTikService(cliente.router).patear_usuario_pppoe(cliente.usuario_pppoe)
+        codigo = status.HTTP_200_OK if resultado['status'] == 'success' else status.HTTP_502_BAD_GATEWAY
+        return Response(resultado, status=codigo)
+
 @extend_schema_view(
     list=extend_schema(summary="Listar routers", description="Obtiene los routers MikroTik configurados en la API.", tags=['Routers MikroTik']),
     retrieve=extend_schema(summary="Obtener un router", description="Obtiene los datos de configuración de un router específico.", tags=['Routers MikroTik']),
@@ -219,6 +242,7 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
 class RouterViewSet(viewsets.ModelViewSet):
     queryset = Router.objects.all()
     serializer_class = RouterSerializer
+    permission_classes = [PermisoOperativo]
 
     @extend_schema(summary="Verificar conexión del router", description="Abre una conexión API, consulta recursos básicos y devuelve identidad, versión y uptime del MikroTik.", tags=['Routers MikroTik'])
     @action(detail=True, methods=['post'], url_path='verificar-conexion')
@@ -308,6 +332,8 @@ class RouterViewSet(viewsets.ModelViewSet):
 class PlanVelocidadViewSet(viewsets.ModelViewSet):
     queryset = PlanVelocidad.objects.all()
     serializer_class = PlanVelocidadSerializer
+    permission_classes = [PermisoOperativo]
+    permite_tecnico_edicion = False
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -392,9 +418,53 @@ class PlanVelocidadViewSet(viewsets.ModelViewSet):
         tags=['Clientes DHCP e IP fija'],
     ),
 )
+class FacturaViewSet(viewsets.ModelViewSet):
+    queryset = Factura.objects.select_related('cliente').all()
+    serializer_class = FacturaSerializer
+    permission_classes = [PermisoOperativo]
+
+
+class PagoViewSet(viewsets.ModelViewSet):
+    queryset = Pago.objects.select_related('factura').all()
+    serializer_class = PagoSerializer
+    permission_classes = [PermisoOperativo]
+
+    def perform_create(self, serializer):
+        pago = serializer.save(registrado_por=self.request.user)
+        factura = pago.factura
+        pagado = sum((item.monto for item in factura.pagos.all()), 0)
+        if pagado >= factura.monto:
+            factura.estado = 'pagada'
+            factura.save(update_fields=['estado', 'actualizado_en'])
+
+
+@extend_schema(
+    summary="Consultar estado público del cliente",
+    description="Consulta limitada por token privado para mostrar el estado de servicio y el aviso de suspensión.",
+    responses={200: inline_serializer(name='PortalClienteResponse', fields={'cliente': serializers.CharField(), 'estado': serializers.CharField(), 'servicio': serializers.CharField(), 'mensaje': serializers.CharField()}), 404: None},
+    auth=[],
+    tags=['Portal de clientes'],
+)
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def portal_cliente(request, token):
+    try:
+        cliente = ClientePPPoE.objects.select_related('plan').get(portal_token=token)
+    except (ClientePPPoE.DoesNotExist, ValueError, TypeError):
+        return Response({'detail': 'Enlace de cliente inválido.'}, status=status.HTTP_404_NOT_FOUND)
+    return Response({
+        'cliente': cliente.nombre_completo,
+        'estado': cliente.estado,
+        'servicio': cliente.plan.nombre_perfil,
+        'mensaje': 'Su servicio está suspendido por falta de pago.' if cliente.estado == 'suspendido' else 'Su servicio se encuentra activo.',
+    })
+
+
 class ClienteRedViewSet(viewsets.ModelViewSet):
     queryset = ClienteRed.objects.select_related('router', 'plan').all()
     serializer_class = ClienteRedSerializer
+    permission_classes = [PermisoOperativo]
+    permite_tecnico_edicion = True
     filter_backends = [DjangoFilterBackend, SearchFilter]
     filterset_fields = ['estado', 'router', 'plan', 'tipo']
     search_fields = ['nombre', 'direccion_ip', 'direccion_mac']

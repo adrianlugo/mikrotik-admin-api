@@ -165,6 +165,40 @@ class MikroTikService:
             logger.error(f"Error al suspender: {e}")
             return {"status": "error", "message": "Error de comunicaciÃ³n con el router MikroTik."}
 
+    def ping_desde_router(self, destino, count=4):
+        """Ejecuta ping desde RouterOS hacia una IP y devuelve el resultado bruto."""
+        if self.simulado:
+            return {"status": "success", "destino": destino, "resultado": ["modo simulación: ping exitoso"]}
+        try:
+            import ipaddress
+            ipaddress.ip_address(destino)
+            api = self._obtener_conexion_real()
+            resultado = api.get_resource('/ping').call(destino=destino, count=str(count))
+            return {"status": "success", "destino": destino, "resultado": resultado}
+        except RouterOsApiError as exc:
+            return {"status": "error", "message": str(exc)}
+        except ValueError:
+            return {"status": "error", "message": "La dirección IP de destino no es válida."}
+
+    def patear_usuario_pppoe(self, usuario_pppoe):
+        """Desconecta las sesiones activas PPPoE coincidentes."""
+        if self.simulado:
+            return {"status": "success", "message": "Sesión desconectada (simulación)", "usuario": usuario_pppoe}
+        try:
+            api = self._obtener_conexion_real()
+            activas = api.get_resource('/ppp/active').get()
+            removidas = 0
+            for sesion in activas:
+                if sesion.get('name') == usuario_pppoe:
+                    api.get_resource('/ppp/active').remove(id=self._obtener_id_router(sesion))
+                    removidas += 1
+            if not removidas:
+                return {"status": "success", "message": "El usuario no tiene una sesión activa", "sesiones": 0}
+            return {"status": "success", "message": "Sesión activa desconectada", "sesiones": removidas}
+        except Exception as exc:
+            logger.error("Error pateando usuario PPPoE: %s", exc)
+            return {"status": "error", "message": str(exc)}
+
     def _desconectar_sesion_activa_interna(self, api_instancia, usuario_pppoe):
         """MÃ©todo privado para tirar una sesiÃ³n activa usando una conexiÃ³n API ya abierta"""
         try:

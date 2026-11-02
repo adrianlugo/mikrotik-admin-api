@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     # Librerías externas
     'rest_framework',
+    'rest_framework.authtoken',
     'django_filters',
     'drf_spectacular',
     # Aplicaciones
@@ -139,6 +140,13 @@ MIKROTIK_SIMULATION_MODE = False
 
 REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
         'rest_framework.filters.SearchFilter',
@@ -155,7 +163,12 @@ SPECTACULAR_SETTINGS = {
 }
 
 # Permitir que tu frontend local consuma la API
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in __import__('os').environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',')
+    if origin.strip()
+]
 
 # Configura qué URLs web pueden hacer peticiones a tu API.
 # Si tu frontend web corre en el puerto 5500 (ej: Live Server de VSCode), pones ese:
