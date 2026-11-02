@@ -473,34 +473,60 @@ class ClienteRedViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         cliente = serializer.save()
-        resultado = MikroTikService(cliente.router).sincronizar_cola_cliente_red(cliente)
-        if resultado.get('status') == 'error':
+        servicio = MikroTikService(cliente.router)
+        reserva = servicio.sincronizar_reserva_cliente_red(cliente)
+        if reserva.get('status') == 'error':
             cliente.delete()
-            return Response({"mikrotik_error": resultado.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
-        return Response({"cliente": serializer.data, "mikrotik_status": resultado}, status=status.HTTP_201_CREATED)
+            return Response({"mikrotik_error": reserva.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
+        cola = servicio.sincronizar_cola_cliente_red(cliente)
+        if cola.get('status') == 'error':
+            servicio.eliminar_reserva_cliente_red(cliente)
+            cliente.delete()
+            return Response({"mikrotik_error": cola.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response({
+            "cliente": ClienteRedSerializer(cliente).data,
+            "reserva_status": reserva,
+            "cola_status": cola,
+        }, status=status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
         cliente = self.get_object()
         serializer = self.get_serializer(cliente, data=request.data, partial=kwargs.get('partial', False))
         serializer.is_valid(raise_exception=True)
         cliente = serializer.save()
-        resultado = MikroTikService(cliente.router).sincronizar_cola_cliente_red(cliente)
-        if resultado.get('status') == 'error':
-            return Response({"mikrotik_error": resultado.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
-        return Response({"cliente": ClienteRedSerializer(cliente).data, "mikrotik_status": resultado})
+        servicio = MikroTikService(cliente.router)
+        reserva = servicio.sincronizar_reserva_cliente_red(cliente)
+        if reserva.get('status') == 'error':
+            return Response({"mikrotik_error": reserva.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
+        cola = servicio.sincronizar_cola_cliente_red(cliente)
+        if cola.get('status') == 'error':
+            return Response({"mikrotik_error": cola.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response({
+            "cliente": ClienteRedSerializer(cliente).data,
+            "reserva_status": reserva,
+            "cola_status": cola,
+        })
 
     def destroy(self, request, *args, **kwargs):
         cliente = self.get_object()
-        resultado = MikroTikService(cliente.router).eliminar_cola_cliente_red(cliente)
-        if resultado.get('status') == 'error':
-            return Response({"mikrotik_error": resultado.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
+        servicio = MikroTikService(cliente.router)
+        cola = servicio.eliminar_cola_cliente_red(cliente)
+        if cola.get('status') == 'error':
+            return Response({"mikrotik_error": cola.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
+        reserva = servicio.eliminar_reserva_cliente_red(cliente)
+        if reserva.get('status') == 'error':
+            return Response({"mikrotik_error": reserva.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
         cliente.delete()
-        return Response({"message": "Cliente y cola eliminados", "mikrotik_status": resultado})
+        return Response({"message": "Cliente, reserva y cola eliminados", "cola_status": cola, "reserva_status": reserva})
 
-    @extend_schema(summary="Crear o reparar la cola del cliente", description="Consulta por nombre la cola del cliente en RouterOS y la crea o actualiza con su IP, plan, parent y estado actuales.", tags=['Clientes DHCP e IP fija'])
+    @extend_schema(summary="Crear o reparar la cola del cliente", description="Repara la reserva DHCP o ARP y la cola simple del cliente con su IP, MAC, plan, parent y estado actuales.", tags=['Clientes DHCP e IP fija'])
     @action(detail=True, methods=['post'], url_path='crear-cola')
     def crear_cola(self, request, pk=None):
         cliente = self.get_object()
-        resultado = MikroTikService(cliente.router).sincronizar_cola_cliente_red(cliente)
-        code = status.HTTP_200_OK if resultado.get('status') == 'success' else status.HTTP_502_BAD_GATEWAY
-        return Response(resultado, status=code)
+        servicio = MikroTikService(cliente.router)
+        reserva = servicio.sincronizar_reserva_cliente_red(cliente)
+        if reserva.get('status') == 'error':
+            return Response(reserva, status=status.HTTP_502_BAD_GATEWAY)
+        cola = servicio.sincronizar_cola_cliente_red(cliente)
+        code = status.HTTP_200_OK if cola.get('status') == 'success' else status.HTTP_502_BAD_GATEWAY
+        return Response({'reserva_status': reserva, 'cola_status': cola}, status=code)

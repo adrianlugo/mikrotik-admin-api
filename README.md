@@ -8,7 +8,7 @@ API desarrollada con Django REST Framework para administrar clientes PPPoE y pla
 - CRUD de planes de velocidad.
 - CRUD de clientes PPPoE, DHCP e IP fija.
 - Creación, actualización, eliminación y suspensión de secretos PPPoE.
-- Creación y reparación de colas simples para clientes DHCP/IP fija.
+- Creación y reparación de leases estáticos DHCP, entradas ARP estáticas y colas simples para clientes DHCP/IP fija.
 - Consulta de sesiones PPP activas.
 - Sincronización cruzada entre Django y RouterOS.
 - Documentación interactiva con Swagger/OpenAPI.
@@ -119,6 +119,8 @@ Además de PPPoE existe una API para clientes identificados por IP/MAC:
 | `POST` | `/api/routers/{id}/reparar-colas/` | Crea colas faltantes para clientes DHCP/IP fija. |
 
 Cada plan puede guardar `cola_padre`. Django crea esa cola en `/queue/simple`; los clientes DHCP/IP fija quedan debajo mediante `parent`. Para PPPoE, el mismo plan se aplica por el profile PPPoE y puede asociarse al parent queue mediante `parent-queue` cuando el RouterOS lo admite.
+
+La configuración estructural se recomienda hacer una vez en WinBox: WAN, NAT, bridge, servidor PPPoE, servidor DHCP, firewall y cola padre global. Django gestiona dinámicamente `/ppp/secret`, leases estáticos de DHCP, entradas ARP para IP fija y colas simples hijo. Para IP fija se requiere la interfaz LAN; el valor predeterminado es `bridge-general` y puede ajustarse por cliente.
 
 ## Documentación técnica
 

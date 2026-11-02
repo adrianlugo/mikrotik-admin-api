@@ -59,6 +59,27 @@ Centraliza los recursos RouterOS:
 
 No debe contener reglas de negocio de Django salvo los registros necesarios para importar o sincronizar datos.
 
+## Modelo operativo recomendado
+
+La configuración base de la red debe hacerse una vez en WinBox y cambiarse poco:
+
+```text
+WAN, NAT, bridge LAN, servidor PPPoE, servidor DHCP, firewall y cola padre global
+```
+
+La API administrará únicamente elementos dinámicos y reversibles:
+
+```text
+/ppp/secret             -> cuentas PPPoE
+/ip/dhcp-server/lease   -> leases estáticos DHCP
+/ip/arp                 -> asociaciones IP/MAC de IP fija
+/queue/simple           -> colas hijo de DHCP/IP fija
+```
+
+Esta separación evita exponer a operadores la configuración crítica del router. Los elementos fijos pueden respaldarse y recuperarse independientemente de los clientes gestionados por Django.
+
+Cada plan representa el perfil PPPoE y una cola padre RouterOS. Los clientes PPPoE no necesitan una cola simple adicional; DHCP e IP fija sí requieren cola hijo vinculada al padre de su plan.
+
 ## Recursos administrados
 
 ### PPPoE

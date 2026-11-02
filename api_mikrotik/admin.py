@@ -46,7 +46,7 @@ class ClientePPPoEAdmin(admin.ModelAdmin):
 
 @admin.register(ClienteRed)
 class ClienteRedAdmin(admin.ModelAdmin):
-    list_display = ('nombre', 'tipo', 'direccion_ip', 'direccion_mac', 'router', 'plan', 'cola_mikrotik', 'estado')
+    list_display = ('nombre', 'tipo', 'direccion_ip', 'direccion_mac', 'interfaz_mikrotik', 'servidor_dhcp', 'router', 'plan', 'cola_mikrotik', 'estado')
     list_filter = ('tipo', 'estado', 'router', 'plan')
     search_fields = ('nombre', 'direccion_ip', 'direccion_mac')
 

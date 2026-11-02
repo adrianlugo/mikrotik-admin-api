@@ -89,9 +89,15 @@ class ClienteRedSerializer(serializers.ModelSerializer):
     def validate(self, data):
         router = data.get('router') or getattr(self.instance, 'router', None)
         plan = data.get('plan') or getattr(self.instance, 'plan', None)
+        tipo = data.get('tipo') or getattr(self.instance, 'tipo', None)
         if router and plan and plan.router_id != router.id:
             raise serializers.ValidationError({"plan": "El plan seleccionado pertenece a otro router."})
-        if data.get('direccion_mac', getattr(self.instance, 'direccion_mac', '')).strip():
+        direccion_mac = data.get('direccion_mac', getattr(self.instance, 'direccion_mac', '')).strip()
+        if tipo == 'dhcp' and not direccion_mac:
+            raise serializers.ValidationError({"direccion_mac": "Los clientes DHCP necesitan una MAC para crear el lease estático."})
+        if not direccion_mac:
+            raise serializers.ValidationError({"direccion_mac": "Las IP fijas necesitan una MAC para crear la reserva ARP."})
+        if direccion_mac:
             mac = data.get('direccion_mac', self.instance.direccion_mac if self.instance else '')
             partes = mac.lower().split(':')
             if len(partes) != 6 or any(len(p) != 2 or not all(c in '0123456789abcdef' for c in p) for p in partes):

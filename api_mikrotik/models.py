@@ -82,6 +82,8 @@ class ClienteRed(models.Model):
     tipo = models.CharField(max_length=20, choices=TIPOS)
     direccion_ip = models.GenericIPAddressField()
     direccion_mac = models.CharField(max_length=17, blank=True)
+    interfaz_mikrotik = models.CharField(max_length=100, blank=True, default='bridge-general', help_text='Interfaz de LAN usada para reservas ARP estáticas e IP fija')
+    servidor_dhcp = models.CharField(max_length=100, blank=True, help_text='Nombre opcional del servidor DHCP; déjalo vacío si solo existe uno')
     cola_mikrotik = models.CharField(max_length=100, blank=True)
     routeros_id = models.CharField(max_length=100, blank=True)
     estado = models.CharField(max_length=20, choices=ESTADOS, default='activo')

@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 from django.test import TestCase
 
-from .models import ClientePPPoE, PlanVelocidad, Router
+from .models import ClientePPPoE, ClienteRed, PlanVelocidad, Router
 from .services import MikroTikService
 
 
@@ -26,9 +26,14 @@ class FakeApi:
     def __init__(self):
         self.profiles = FakeResource([])
         self.secrets = FakeResource([])
+        self.resources = {}
 
     def get_resource(self, path):
-        return self.profiles if path == '/ppp/profile' else self.secrets
+        if path == '/ppp/profile':
+            return self.profiles
+        if path == '/ppp/secret':
+            return self.secrets
+        return self.resources.setdefault(path, FakeResource([]))
 
 
 class BidirectionalSyncTests(TestCase):
@@ -87,3 +92,34 @@ class BidirectionalSyncTests(TestCase):
             MikroTikService._velocidades_desde_router('10240k/20480k'),
             (10, 20)
         )
+
+    @patch.object(MikroTikService, '_obtener_conexion_real')
+    def test_dhcp_client_creates_static_lease(self, obtener_conexion_real):
+        obtener_conexion_real.return_value = self.fake_api
+        cliente = ClienteRed.objects.create(
+            router=self.router, plan=self.plan, nombre='Casa DHCP', tipo='dhcp',
+            direccion_ip='192.168.88.50', direccion_mac='AA:BB:CC:DD:EE:01',
+        )
+
+        resultado = MikroTikService(self.router).sincronizar_reserva_cliente_red(cliente)
+
+        self.assertEqual(resultado['status'], 'success')
+        lease = self.fake_api.resources['/ip/dhcp-server/lease'].added[0]
+        self.assertEqual(lease['address'], '192.168.88.50')
+        self.assertEqual(lease['mac-address'], 'AA:BB:CC:DD:EE:01')
+
+    @patch.object(MikroTikService, '_obtener_conexion_real')
+    def test_fixed_ip_client_creates_static_arp(self, obtener_conexion_real):
+        obtener_conexion_real.return_value = self.fake_api
+        cliente = ClienteRed.objects.create(
+            router=self.router, plan=self.plan, nombre='Antena fija', tipo='ip_fija',
+            direccion_ip='192.168.88.51', direccion_mac='AA:BB:CC:DD:EE:02',
+            interfaz_mikrotik='bridge-general',
+        )
+
+        resultado = MikroTikService(self.router).sincronizar_reserva_cliente_red(cliente)
+
+        self.assertEqual(resultado['status'], 'success')
+        arp = self.fake_api.resources['/ip/arp'].added[0]
+        self.assertEqual(arp['interface'], 'bridge-general')
+        self.assertEqual(arp['address'], '192.168.88.51')

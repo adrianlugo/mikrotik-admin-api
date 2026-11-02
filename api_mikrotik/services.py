@@ -403,6 +403,58 @@ class MikroTikService:
             logger.exception("No se pudo sincronizar la cola padre")
             return {"status": "error", "message": str(e)}
 
+    def sincronizar_reserva_cliente_red(self, cliente):
+        """Sincroniza el lease DHCP o la entrada ARP estática de un cliente de red."""
+        if self.simulado:
+            return {"status": "success", "message": "Operación simulada correctamente"}
+        try:
+            api = self._obtener_conexion_real()
+            comentario = f"Cliente {cliente.id} - {cliente.nombre}"
+            if cliente.tipo == 'dhcp':
+                resource = api.get_resource('/ip/dhcp-server/lease')
+                existentes = [item for item in resource.get() if item.get('address') == cliente.direccion_ip or item.get('mac-address', '').lower() == cliente.direccion_mac.lower()]
+                parametros = {
+                    'address': cliente.direccion_ip,
+                    'mac-address': cliente.direccion_mac.upper(),
+                    'comment': comentario,
+                    'disabled': 'false' if cliente.estado == 'activo' else 'true',
+                }
+                if cliente.servidor_dhcp:
+                    parametros['server'] = cliente.servidor_dhcp
+            else:
+                resource = api.get_resource('/ip/arp')
+                existentes = [item for item in resource.get() if item.get('address') == cliente.direccion_ip or item.get('mac-address', '').lower() == cliente.direccion_mac.lower()]
+                parametros = {
+                    'address': cliente.direccion_ip,
+                    'mac-address': cliente.direccion_mac.upper(),
+                    'interface': cliente.interfaz_mikrotik or 'bridge-general',
+                    'comment': comentario,
+                    'disabled': 'false' if cliente.estado == 'activo' else 'true',
+                }
+            if existentes:
+                resource.set(id=self._obtener_id_router(existentes[0]), **parametros)
+            else:
+                resource.add(**parametros)
+            return {"status": "success", "message": "Reserva de red sincronizada"}
+        except Exception as e:
+            logger.exception("No se pudo sincronizar la reserva DHCP/ARP del cliente")
+            return {"status": "error", "message": str(e)}
+
+    def eliminar_reserva_cliente_red(self, cliente):
+        """Elimina únicamente la reserva DHCP o ARP administrada por el cliente."""
+        if self.simulado:
+            return {"status": "success", "message": "Operación simulada correctamente"}
+        try:
+            api = self._obtener_conexion_real()
+            resource = api.get_resource('/ip/dhcp-server/lease' if cliente.tipo == 'dhcp' else '/ip/arp')
+            coincidentes = [item for item in resource.get() if item.get('comment') == f"Cliente {cliente.id} - {cliente.nombre}"]
+            for item in coincidentes:
+                resource.remove(id=self._obtener_id_router(item))
+            return {"status": "success", "message": "Reserva de red eliminada"}
+        except Exception as e:
+            logger.exception("No se pudo eliminar la reserva DHCP/ARP del cliente")
+            return {"status": "error", "message": str(e)}
+
     def sincronizar_cola_cliente_red(self, cliente, plan=None):
         """Crea o actualiza la cola hijo de un cliente DHCP/IP fija."""
         if plan is None:
