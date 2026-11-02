@@ -171,6 +171,8 @@ class MikroTikService:
             return {"status": "success", "destino": destino, "resultado": ["modo simulación: ping exitoso"]}
         try:
             import ipaddress
+            from routeros_api.exceptions import RouterOsApiError
+
             ipaddress.ip_address(destino)
             api = self._obtener_conexion_real()
             resultado = api.get_resource('/ping').call(destino=destino, count=str(count))
