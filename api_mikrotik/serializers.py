@@ -1,6 +1,14 @@
 import re
 from rest_framework import serializers
-from .models import ClientePPPoE, PlanVelocidad
+from .models import ClientePPPoE, PlanVelocidad, Router
+
+
+class RouterSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    class Meta:
+        model = Router
+        fields = '__all__'
 
 class ClientePPPoESerializer(serializers.ModelSerializer):
     # Declaramos explícitamente los campos para poder aplicar estilos de lectura en las respuestas

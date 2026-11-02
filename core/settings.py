@@ -151,7 +151,7 @@ SPECTACULAR_SETTINGS = {
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
     # Esto ayuda a organizar visualmente los endpoints en Swagger
-    'SCHEMA_PATH_PREFIX': r'/api/v1/', 
+    'SCHEMA_PATH_PREFIX': r'/api/',
 }
 
 # Permitir que tu frontend local consuma la API

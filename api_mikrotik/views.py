@@ -7,7 +7,7 @@ from rest_framework.filters import SearchFilter
 from drf_spectacular.utils import extend_schema, inline_serializer, extend_schema_view
 
 from .models import ClientePPPoE, PlanVelocidad, Router
-from .serializers import ClientePPPoESerializer, PlanVelocidadSerializer
+from .serializers import ClientePPPoESerializer, PlanVelocidadSerializer, RouterSerializer
 from .services import MikroTikService
 
 @extend_schema_view(
@@ -80,11 +80,35 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
             "conexiones": usuarios_activos
         }, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary="Sincronizar con el primer router",
+        description="Sincroniza perfiles y secretos en ambos sentidos usando el primer router configurado. Se recomienda usar el endpoint específico por router.",
+        responses={200: inline_serializer(
+            name='SincronizacionClienteResponse',
+            fields={
+                'message': serializers.CharField(),
+                'details': serializers.DictField(),
+            },
+        )},
+        tags=['Sincronización MikroTik'],
+    )
     @action(detail=False, methods=['post'], url_path='sincronizar')
     def sincronizar(self, request):
         """Sincroniza en las dos direcciones el primer router configurado."""
         return self._ejecutar_sincronizacion()
 
+    @extend_schema(
+        summary="Importar datos desde MikroTik (compatible)",
+        description="Ruta antigua conservada por compatibilidad. Ejecuta la misma sincronización bidireccional que el endpoint sincronizar; se recomienda migrar a /api/routers/{id}/sincronizar/.",
+        responses={200: inline_serializer(
+            name='ImportacionMikrotikResponse',
+            fields={
+                'message': serializers.CharField(),
+                'details': serializers.DictField(),
+            },
+        )},
+        tags=['Sincronización MikroTik'],
+    )
     @action(detail=False, methods=['post'], url_path='importar-desde-mikrotik')
     def importar_desde_mikrotik(self, request):
         """Ruta compatible con versiones anteriores; ejecuta sincronización bi-direccional."""
@@ -235,7 +259,81 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
             "cliente_estado": cliente.estado
         }, status=status.HTTP_200_OK)
 
-class PlanVelocidadViewSet(viewsets.ModelViewSet): # 🌟 Cambiado a ModelViewSet para permitir POST
+@extend_schema_view(
+    list=extend_schema(summary="Listar routers", description="Obtiene los routers MikroTik configurados en la API.", tags=['Routers MikroTik']),
+    retrieve=extend_schema(summary="Obtener un router", description="Obtiene los datos de configuración de un router específico.", tags=['Routers MikroTik']),
+    create=extend_schema(summary="Registrar un router", description="Registra la dirección, credenciales y puerto API de un router.", tags=['Routers MikroTik']),
+    update=extend_schema(summary="Actualizar un router", description="Reemplaza la configuración completa de un router.", tags=['Routers MikroTik']),
+    partial_update=extend_schema(summary="Actualizar parcialmente un router", description="Modifica únicamente los campos enviados de un router.", tags=['Routers MikroTik']),
+    destroy=extend_schema(summary="Eliminar un router", description="Elimina la configuración local de un router si no tiene datos protegidos asociados.", tags=['Routers MikroTik']),
+)
+class RouterViewSet(viewsets.ModelViewSet):
+    queryset = Router.objects.all()
+    serializer_class = RouterSerializer
+
+    @extend_schema(summary="Verificar conexión del router", description="Abre una conexión API, consulta recursos básicos y devuelve identidad, versión y uptime del MikroTik.", tags=['Routers MikroTik'])
+    @action(detail=True, methods=['post'], url_path='verificar-conexion')
+    def verificar_conexion(self, request, pk=None):
+        router = self.get_object()
+        resultado = MikroTikService(router).verificar_conexion()
+        status_code = status.HTTP_200_OK if resultado['status'] == 'success' else status.HTTP_502_BAD_GATEWAY
+        return Response(resultado, status=status_code)
+
+    @extend_schema(summary="Sincronizar este router", description="Crea o actualiza en ambos sentidos los profiles, planes, secretos PPPoE y clientes asociados a este router.", tags=['Routers MikroTik'])
+    @action(detail=True, methods=['post'], url_path='sincronizar')
+    def sincronizar(self, request, pk=None):
+        router = self.get_object()
+        resultado = MikroTikService(router).sincronizar_bidireccional()
+        status_code = status.HTTP_200_OK if resultado['status'] == 'success' else status.HTTP_502_BAD_GATEWAY
+        return Response(resultado, status=status_code)
+
+    @extend_schema(summary="Consultar estado del router", description="Devuelve configuración local, resultado de conexión y cantidades de planes y clientes asociados.", tags=['Routers MikroTik'])
+    @action(detail=True, methods=['get'], url_path='estado')
+    def estado(self, request, pk=None):
+        router = self.get_object()
+        conexion = MikroTikService(router).verificar_conexion()
+        return Response({
+            'router': router.nombre,
+            'activo': router.activo,
+            'conexion': conexion,
+            'clientes_configurados': ClientePPPoE.objects.filter(router=router).count(),
+            'planes_configurados': PlanVelocidad.objects.filter(router=router).count(),
+        }, status=status.HTTP_200_OK)
+
+
+@extend_schema_view(
+    list=extend_schema(
+        summary="Listar planes de velocidad",
+        description="Obtiene los planes locales con sus velocidades de subida, bajada, profile PPP y router asociado.",
+        tags=['Planes de velocidad'],
+    ),
+    retrieve=extend_schema(
+        summary="Consultar un plan de velocidad",
+        description="Obtiene toda la información de un plan específico mediante su identificador.",
+        tags=['Planes de velocidad'],
+    ),
+    create=extend_schema(
+        summary="Crear un plan de velocidad",
+        description="Guarda el plan en Django y crea o actualiza el profile correspondiente en su router MikroTik.",
+        tags=['Planes de velocidad'],
+    ),
+    update=extend_schema(
+        summary="Actualizar completamente un plan",
+        description="Reemplaza todos los datos editables del plan y lo mantiene alineado con la configuración local.",
+        tags=['Planes de velocidad'],
+    ),
+    partial_update=extend_schema(
+        summary="Actualizar parcialmente un plan",
+        description="Modifica únicamente los campos enviados; por ejemplo, la velocidad de subida o bajada.",
+        tags=['Planes de velocidad'],
+    ),
+    destroy=extend_schema(
+        summary="Eliminar un plan de velocidad",
+        description="Elimina el plan local cuando ningún cliente protegido lo utiliza.",
+        tags=['Planes de velocidad'],
+    ),
+)
+class PlanVelocidadViewSet(viewsets.ModelViewSet):
     queryset = PlanVelocidad.objects.all()
     serializer_class = PlanVelocidadSerializer
 
@@ -243,26 +341,13 @@ class PlanVelocidadViewSet(viewsets.ModelViewSet): # 🌟 Cambiado a ModelViewSe
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        # Obtenemos las velocidades explícitas que envíe el formulario web
-        # Formato esperado: ej: "5M", "10M"
-        subida = request.data.get('subida_mb', '5M')
-        bajada = request.data.get('bajada_mb', '10M')
-        
         with transaction.atomic():
-            # 1. Guardamos el Plan en la base de datos de Django
             plan = serializer.save()
-            
-            # 2. Tomamos el primer router configurado para crearle el perfil
-            router_principal = Router.objects.first()
-            if not router_principal:
-                raise serializers.ValidationError({"error": "No hay routers configurados para asignar el perfil"})
-            
-            # 3. Mandamos la instrucción al MikroTik real para crear el Profile
-            mikrotik_service = MikroTikService(router_principal)
+            mikrotik_service = MikroTikService(plan.router)
             resultado = mikrotik_service.crear_perfil_velocidad(
                 nombre_perfil=plan.nombre_perfil,
-                subida=subida,
-                bajada=bajada
+                subida=f"{plan.subida_mbps}M",
+                bajada=f"{plan.bajada_mbps}M",
             )
             
             # Si el MikroTik rechaza el perfil (ej: nombre duplicado o sintaxis inválida), hacemos rollback en Django

@@ -40,6 +40,27 @@ class MikroTikService:
         print(f"-> Comando enviado: {mensaje}\n")
         return {"status": "success", "message": "OperaciÃ³n simulada correctamente"}
 
+    def verificar_conexion(self):
+        """Comprueba la API y devuelve el estado básico del router."""
+        if self.simulado:
+            return {"status": "success", "message": "Modo simulación activo"}
+
+        try:
+            api = self._obtener_conexion_real()
+            resource = api.get_resource('/system/resource')
+            rows = resource.get()
+            info = rows[0] if rows else {}
+            return {
+                "status": "success",
+                "message": "Conexión establecida",
+                "routerboard": info.get('board-name'),
+                "version": info.get('version'),
+                "uptime": info.get('uptime'),
+            }
+        except Exception as e:
+            logger.exception("No se pudo verificar la conexión con MikroTik")
+            return {"status": "error", "message": str(e)}
+
     def crear_usuario_pppoe(self, usuario, password, plan_perfil):
         """Simula o ejecuta la creaciÃ³n de un secreto PPPoE en RouterOS"""
         if self.simulado:
