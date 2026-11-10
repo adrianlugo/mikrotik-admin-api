@@ -1,0 +1,2109 @@
+openapi: 3.0.3
+info:
+  title: API de Gestión MikroTik ISP
+  version: 1.0.0
+  description: Sistema automatizado para la creación, suspensión y monitoreo en tiempo
+    real de clientes PPPoE en routers MikroTik.
+paths:
+  /api/clientes-pppoe/:
+    get:
+      operationId: clientes_pppoe_list
+      description: Retorna la lista completa de clientes registrados en Django. Permite
+        filtrar por estado, router y plan, o buscar por nombre.
+      summary: Listar todos los clientes PPPoE
+      parameters:
+      - in: query
+        name: estado
+        schema:
+          type: string
+          enum:
+          - activo
+          - suspendido
+        description: |-
+          * `activo` - Activo
+          * `suspendido` - Suspendido
+      - in: query
+        name: plan
+        schema:
+          type: integer
+      - in: query
+        name: router
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Clientes PPPoE
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClientePPPoE'
+          description: ''
+    post:
+      operationId: clientes_pppoe_create
+      description: Registra al usuario en la base de datos local y, en simultáneo,
+        lo da de alta de forma automática en el MikroTik configurado.
+      summary: Crear un nuevo cliente PPPoE
+      tags:
+      - Clientes PPPoE
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClientePPPoE'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ClientePPPoE'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ClientePPPoE'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientePPPoE'
+          description: ''
+  /api/clientes-pppoe/{id}/:
+    get:
+      operationId: clientes_pppoe_retrieve
+      description: Recupera la información completa de un perfil de cliente PPPoE
+        específico mediante su ID único.
+      summary: Obtener detalles de un cliente
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this cliente pp po e.
+        required: true
+      tags:
+      - Clientes PPPoE
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientePPPoE'
+          description: ''
+    put:
+      operationId: clientes_pppoe_update
+      description: Modifica todos los campos de un cliente (ej. cambio de credenciales
+        o perfil de velocidad) e impacta los cambios inmediatamente en el MikroTik.
+      summary: Actualizar cliente por completo
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this cliente pp po e.
+        required: true
+      tags:
+      - Clientes PPPoE
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClientePPPoE'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ClientePPPoE'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ClientePPPoE'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientePPPoE'
+          description: ''
+    patch:
+      operationId: clientes_pppoe_partial_update
+      description: Permite realizar modificaciones parciales (ej. modificar solo la
+        contraseña) sin necesidad de enviar todo el formulario.
+      summary: Actualizar campos específicos del cliente
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this cliente pp po e.
+        required: true
+      tags:
+      - Clientes PPPoE
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedClientePPPoE'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedClientePPPoE'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedClientePPPoE'
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientePPPoE'
+          description: ''
+    delete:
+      operationId: clientes_pppoe_destroy
+      description: Remueve el secreto PPPoE del router MikroTik en tiempo real y,
+        posteriormente, elimina de forma permanente el registro en Django.
+      summary: Eliminar un cliente del sistema
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this cliente pp po e.
+        required: true
+      tags:
+      - Clientes PPPoE
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/clientes-pppoe/{id}/cambiar-estado/:
+    post:
+      operationId: clientes_pppoe_cambiar_estado_create
+      description: Modifica el estado manual de un usuario PPPoE en Django y altera
+        su perfil en el MikroTik (lo mueve al perfil de corte o le devuelve su plan
+        contratado).
+      summary: Cambiar estado del cliente (Suspender/Reactivar)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this cliente pp po e.
+        required: true
+      tags:
+      - Clientes PPPoE
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CambiarEstadoRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CambiarEstadoRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CambiarEstadoRequest'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CambiarEstadoResponse'
+          description: ''
+  /api/clientes-pppoe/{id}/patear/:
+    post:
+      operationId: clientes_pppoe_patear_create
+      description: Elimina las sesiones activas PPPoE del usuario para obligarlo a
+        autenticarse nuevamente.
+      summary: Desconectar sesión PPPoE activa
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this cliente pp po e.
+        required: true
+      tags:
+      - Monitoreo MikroTik
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClientePPPoE'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ClientePPPoE'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ClientePPPoE'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientePPPoE'
+          description: ''
+  /api/clientes-pppoe/{id}/ping/:
+    post:
+      operationId: clientes_pppoe_ping_create
+      description: Usa la IP de antena guardada del cliente, o la IP enviada como
+        'ip', y ejecuta un diagnóstico desde el propio MikroTik.
+      summary: Hacer ping desde el router al equipo del cliente
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this cliente pp po e.
+        required: true
+      tags:
+      - Monitoreo MikroTik
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PingClienteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PingClienteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PingClienteRequest'
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingClienteResponse'
+          description: ''
+  /api/clientes-pppoe/activos/:
+    get:
+      operationId: clientes_pppoe_activos_retrieve
+      description: Consulta en el router asociado al conjunto de clientes las sesiones
+        PPP activas reportadas por RouterOS. Los nombres mostrados permiten identificar
+        qué usuarios tienen una conexión establecida actualmente.
+      summary: Listar usuarios activos en MikroTik
+      tags:
+      - Monitoreo MikroTik
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsuariosActivosResponse'
+          description: ''
+  /api/clientes-red/:
+    get:
+      operationId: clientes_red_list
+      description: Lista los clientes de red registrados y permite filtrar por router,
+        plan, tipo y estado.
+      summary: Listar clientes DHCP e IP fija
+      parameters:
+      - in: query
+        name: estado
+        schema:
+          type: string
+          enum:
+          - activo
+          - suspendido
+        description: |-
+          * `activo` - Activo
+          * `suspendido` - Suspendido
+      - in: query
+        name: plan
+        schema:
+          type: integer
+      - in: query
+        name: router
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: tipo
+        schema:
+          type: string
+          enum:
+          - dhcp
+          - ip_fija
+        description: |-
+          * `dhcp` - DHCP
+          * `ip_fija` - IP fija
+      tags:
+      - Clientes DHCP e IP fija
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClienteRed'
+          description: ''
+    post:
+      operationId: clientes_red_create
+      description: Crea el registro, sincroniza una reserva DHCP o ARP estática y
+        genera la cola simple del cliente.
+      summary: Crear un cliente DHCP o IP fija
+      tags:
+      - Clientes DHCP e IP fija
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClienteRed'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ClienteRed'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ClienteRed'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClienteRed'
+          description: ''
+  /api/clientes-red/{id}/:
+    get:
+      operationId: clientes_red_retrieve
+      description: Obtiene el registro y los datos de reserva, plan, dirección IP/MAC,
+        cola y estado.
+      summary: Consultar un cliente DHCP o IP fija
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this cliente red.
+        required: true
+      tags:
+      - Clientes DHCP e IP fija
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClienteRed'
+          description: ''
+    put:
+      operationId: clientes_red_update
+      description: Reemplaza los datos editables y vuelve a sincronizar reserva, cola,
+        límites y estado.
+      summary: Actualizar completamente un cliente de red
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this cliente red.
+        required: true
+      tags:
+      - Clientes DHCP e IP fija
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClienteRed'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ClienteRed'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ClienteRed'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClienteRed'
+          description: ''
+    patch:
+      operationId: clientes_red_partial_update
+      description: Modifica los campos enviados y sincroniza reserva y cola correspondientes.
+      summary: Actualizar parcialmente un cliente de red
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this cliente red.
+        required: true
+      tags:
+      - Clientes DHCP e IP fija
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedClienteRed'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedClienteRed'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedClienteRed'
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClienteRed'
+          description: ''
+    delete:
+      operationId: clientes_red_destroy
+      description: Elimina primero la cola y la reserva de RouterOS; después elimina
+        el registro local si ambas operaciones tuvieron éxito.
+      summary: Eliminar un cliente DHCP o IP fija
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this cliente red.
+        required: true
+      tags:
+      - Clientes DHCP e IP fija
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/clientes-red/{id}/crear-cola/:
+    post:
+      operationId: clientes_red_crear_cola_create
+      description: Repara la reserva DHCP o ARP y la cola simple del cliente con su
+        IP, MAC, plan, parent y estado actuales.
+      summary: Crear o reparar la cola del cliente
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this cliente red.
+        required: true
+      tags:
+      - Clientes DHCP e IP fija
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClienteRed'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ClienteRed'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ClienteRed'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClienteRed'
+          description: ''
+  /api/facturas/:
+    get:
+      operationId: facturas_list
+      description: Lista facturas con cliente, período, monto, vencimiento y estado.
+        Permite controlar saldos pendientes y vencidos.
+      summary: Listar facturas
+      parameters:
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Facturación
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Factura'
+          description: ''
+    post:
+      operationId: facturas_create
+      description: Registra una factura mensual para un cliente. No debe existir otra
+        factura del mismo período para ese cliente.
+      summary: Crear una factura
+      tags:
+      - Facturación
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Factura'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Factura'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Factura'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Factura'
+          description: ''
+  /api/facturas/{id}/:
+    get:
+      operationId: facturas_retrieve
+      description: Obtiene los datos completos de una factura y su cliente asociado.
+      summary: Consultar una factura
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this factura.
+        required: true
+      tags:
+      - Facturación
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Factura'
+          description: ''
+    put:
+      operationId: facturas_update
+      description: Reemplaza los datos editables de una factura.
+      summary: Actualizar una factura
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this factura.
+        required: true
+      tags:
+      - Facturación
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Factura'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Factura'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Factura'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Factura'
+          description: ''
+    patch:
+      operationId: facturas_partial_update
+      description: Modifica solamente los campos enviados de una factura.
+      summary: Actualizar parcialmente una factura
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this factura.
+        required: true
+      tags:
+      - Facturación
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedFactura'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedFactura'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedFactura'
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Factura'
+          description: ''
+    delete:
+      operationId: facturas_destroy
+      description: Elimina la factura si las restricciones de integridad de Django
+        lo permiten.
+      summary: Eliminar una factura
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this factura.
+        required: true
+      tags:
+      - Facturación
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/pagos/:
+    get:
+      operationId: pagos_list
+      description: Lista los pagos registrados y permite comprobar qué factura recibió
+        cada abono.
+      summary: Listar pagos
+      parameters:
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Pagos
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Pago'
+          description: ''
+    post:
+      operationId: pagos_create
+      description: Registra un pago sobre una factura y lo asociará al usuario autenticado.
+        La factura pasa a pagada cuando los pagos alcanzan su monto total.
+      summary: Registrar un pago
+      tags:
+      - Pagos
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Pago'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Pago'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Pago'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pago'
+          description: ''
+  /api/pagos/{id}/:
+    get:
+      operationId: pagos_retrieve
+      description: Obtiene el monto, método, referencia, usuario registrante y fecha
+        de un pago.
+      summary: Consultar un pago
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this pago.
+        required: true
+      tags:
+      - Pagos
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pago'
+          description: ''
+    put:
+      operationId: pagos_update
+      description: Reemplaza los datos editables de un pago sin cambiar el usuario
+        registrante.
+      summary: Actualizar un pago
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this pago.
+        required: true
+      tags:
+      - Pagos
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Pago'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Pago'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Pago'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pago'
+          description: ''
+    patch:
+      operationId: pagos_partial_update
+      description: Modifica únicamente los campos indicados de un pago.
+      summary: Actualizar parcialmente un pago
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this pago.
+        required: true
+      tags:
+      - Pagos
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedPago'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedPago'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedPago'
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pago'
+          description: ''
+    delete:
+      operationId: pagos_destroy
+      description: Elimina el pago y recalcula automáticamente el estado de la factura
+        según los abonos restantes.
+      summary: Eliminar un pago
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this pago.
+        required: true
+      tags:
+      - Pagos
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/planes/:
+    get:
+      operationId: planes_list
+      description: Obtiene los planes locales con sus velocidades de subida, bajada,
+        profile PPP y router asociado.
+      summary: Listar planes de velocidad
+      parameters:
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Planes de velocidad
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanVelocidad'
+          description: ''
+    post:
+      operationId: planes_create
+      description: Guarda el plan en Django y crea o actualiza el profile correspondiente
+        en su router MikroTik.
+      summary: Crear un plan de velocidad
+      tags:
+      - Planes de velocidad
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanVelocidad'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PlanVelocidad'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PlanVelocidad'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanVelocidad'
+          description: ''
+  /api/planes/{id}/:
+    get:
+      operationId: planes_retrieve
+      description: Obtiene toda la información de un plan específico mediante su identificador.
+      summary: Consultar un plan de velocidad
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this plan velocidad.
+        required: true
+      tags:
+      - Planes de velocidad
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanVelocidad'
+          description: ''
+    put:
+      operationId: planes_update
+      description: Reemplaza todos los datos editables del plan y lo mantiene alineado
+        con la configuración local.
+      summary: Actualizar completamente un plan
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this plan velocidad.
+        required: true
+      tags:
+      - Planes de velocidad
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanVelocidad'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PlanVelocidad'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PlanVelocidad'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanVelocidad'
+          description: ''
+    patch:
+      operationId: planes_partial_update
+      description: Modifica únicamente los campos enviados; por ejemplo, la velocidad
+        de subida o bajada.
+      summary: Actualizar parcialmente un plan
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this plan velocidad.
+        required: true
+      tags:
+      - Planes de velocidad
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedPlanVelocidad'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedPlanVelocidad'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedPlanVelocidad'
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanVelocidad'
+          description: ''
+    delete:
+      operationId: planes_destroy
+      description: Elimina el plan local cuando ningún cliente protegido lo utiliza.
+      summary: Eliminar un plan de velocidad
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this plan velocidad.
+        required: true
+      tags:
+      - Planes de velocidad
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/portal/{token}/:
+    get:
+      operationId: portal_retrieve
+      description: Consulta limitada por token privado para mostrar el estado de servicio
+        y el aviso de suspensión.
+      summary: Consultar estado público del cliente
+      parameters:
+      - in: path
+        name: token
+        schema:
+          type: string
+        required: true
+      tags:
+      - Portal de clientes
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalClienteResponse'
+          description: ''
+        '404':
+          description: No response body
+  /api/routers/:
+    get:
+      operationId: routers_list
+      description: Obtiene los routers MikroTik configurados en la API.
+      summary: Listar routers
+      parameters:
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Routers MikroTik
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Router'
+          description: ''
+    post:
+      operationId: routers_create
+      description: Registra la dirección, credenciales y puerto API de un router.
+      summary: Registrar un router
+      tags:
+      - Routers MikroTik
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Router'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Router'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Router'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Router'
+          description: ''
+  /api/routers/{id}/:
+    get:
+      operationId: routers_retrieve
+      description: Obtiene los datos de configuración de un router específico.
+      summary: Obtener un router
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this router.
+        required: true
+      tags:
+      - Routers MikroTik
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Router'
+          description: ''
+    put:
+      operationId: routers_update
+      description: Reemplaza la configuración completa de un router.
+      summary: Actualizar un router
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this router.
+        required: true
+      tags:
+      - Routers MikroTik
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Router'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Router'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Router'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Router'
+          description: ''
+    patch:
+      operationId: routers_partial_update
+      description: Modifica únicamente los campos enviados de un router.
+      summary: Actualizar parcialmente un router
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this router.
+        required: true
+      tags:
+      - Routers MikroTik
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedRouter'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedRouter'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedRouter'
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Router'
+          description: ''
+    delete:
+      operationId: routers_destroy
+      description: Elimina la configuración local de un router si no tiene datos protegidos
+        asociados.
+      summary: Eliminar un router
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this router.
+        required: true
+      tags:
+      - Routers MikroTik
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/routers/{id}/consumo/:
+    get:
+      operationId: routers_consumo_retrieve
+      description: Consulta las colas simples del router y devuelve nombre, parent,
+        target, límite, tráfico acumulado, velocidad y estado disponibles en ese momento.
+      summary: Monitorear consumo del router
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this router.
+        required: true
+      tags:
+      - Monitoreo MikroTik
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Router'
+          description: ''
+  /api/routers/{id}/dhcp-leases/:
+    get:
+      operationId: routers_dhcp_leases_retrieve
+      description: Consulta los leases DHCP dinámicos y estáticos de RouterOS, incluyendo
+        dirección, MAC, servidor, estado y comentario cuando estén disponibles.
+      summary: Listar leases DHCP
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this router.
+        required: true
+      tags:
+      - Monitoreo MikroTik
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Router'
+          description: ''
+  /api/routers/{id}/estado/:
+    get:
+      operationId: routers_estado_retrieve
+      description: Devuelve configuración local, resultado de conexión y cantidades
+        de planes y clientes asociados.
+      summary: Consultar estado del router
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this router.
+        required: true
+      tags:
+      - Routers MikroTik
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Router'
+          description: ''
+  /api/routers/{id}/reparar-colas/:
+    post:
+      operationId: routers_reparar_colas_create
+      description: Recorre los clientes DHCP/IP fija de este router y crea o actualiza
+        las colas simples que no tengan nombre, límites o parent correctos.
+      summary: Crear y reparar colas de clientes
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this router.
+        required: true
+      tags:
+      - Routers MikroTik
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Router'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Router'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Router'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Router'
+          description: ''
+  /api/routers/{id}/sincronizar/:
+    post:
+      operationId: routers_sincronizar_create
+      description: Crea o actualiza en ambos sentidos los profiles, planes, secretos
+        PPPoE y clientes asociados a este router.
+      summary: Sincronizar este router
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this router.
+        required: true
+      tags:
+      - Routers MikroTik
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Router'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Router'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Router'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Router'
+          description: ''
+  /api/routers/{id}/verificar-conexion/:
+    post:
+      operationId: routers_verificar_conexion_create
+      description: Abre una conexión API, consulta recursos básicos y devuelve identidad,
+        versión y uptime del MikroTik.
+      summary: Verificar conexión del router
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this router.
+        required: true
+      tags:
+      - Routers MikroTik
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Router'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Router'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Router'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Router'
+          description: ''
+  /api/token/:
+    post:
+      operationId: token_create
+      description: 'Valida usuario y contraseña y devuelve el token de Django REST
+        Framework. Envíe el valor como ''Authorization: Token <token>''.'
+      summary: Obtener token de acceso
+      tags:
+      - Autenticación
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AuthToken'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AuthToken'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthToken'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthToken'
+          description: ''
+components:
+  schemas:
+    AuthToken:
+      type: object
+      properties:
+        username:
+          type: string
+          writeOnly: true
+        password:
+          type: string
+          writeOnly: true
+        token:
+          type: string
+          readOnly: true
+      required:
+      - password
+      - token
+      - username
+    CambiarEstadoRequest:
+      type: object
+      properties:
+        estado:
+          $ref: '#/components/schemas/CambiarEstadoRequestEstadoEnum'
+      required:
+      - estado
+    CambiarEstadoRequestEstadoEnum:
+      enum:
+      - activo
+      - suspendido
+      type: string
+      description: |-
+        * `activo` - activo
+        * `suspendido` - suspendido
+    CambiarEstadoResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        mikrotik_status:
+          type: string
+        cliente_estado:
+          type: string
+      required:
+      - cliente_estado
+      - message
+      - mikrotik_status
+    ClientePPPoE:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        router_nombre:
+          type: string
+          readOnly: true
+        plan_nombre:
+          type: string
+          readOnly: true
+        usuario_pppoe:
+          type: string
+          description: User para el secret
+          maxLength: 100
+        password_pppoe:
+          type: string
+          description: Password para el secret
+          maxLength: 100
+        nombre_completo:
+          type: string
+          maxLength: 200
+        estado:
+          $ref: '#/components/schemas/EstadoB1eEnum'
+        direccion_ip_antena:
+          type: string
+          nullable: true
+          description: IP del equipo o antena que sirve al cliente
+        portal_token:
+          type: string
+          format: uuid
+          readOnly: true
+        creado_en:
+          type: string
+          format: date-time
+          readOnly: true
+        router:
+          type: integer
+        plan:
+          type: integer
+      required:
+      - creado_en
+      - id
+      - nombre_completo
+      - password_pppoe
+      - plan
+      - plan_nombre
+      - portal_token
+      - router
+      - router_nombre
+      - usuario_pppoe
+    ClienteRed:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        router_nombre:
+          type: string
+          readOnly: true
+        plan_nombre:
+          type: string
+          readOnly: true
+        nombre:
+          type: string
+          maxLength: 200
+        tipo:
+          $ref: '#/components/schemas/TipoEnum'
+        direccion_ip:
+          type: string
+        direccion_mac:
+          type: string
+          maxLength: 17
+        interfaz_mikrotik:
+          type: string
+          description: Interfaz de LAN usada para reservas ARP estáticas e IP fija
+          maxLength: 100
+        servidor_dhcp:
+          type: string
+          description: Nombre opcional del servidor DHCP; déjalo vacío si solo existe
+            uno
+          maxLength: 100
+        cola_mikrotik:
+          type: string
+          maxLength: 100
+        routeros_id:
+          type: string
+          maxLength: 100
+        estado:
+          $ref: '#/components/schemas/EstadoB1eEnum'
+        creado_en:
+          type: string
+          format: date-time
+          readOnly: true
+        actualizado_en:
+          type: string
+          format: date-time
+          readOnly: true
+        router:
+          type: integer
+        plan:
+          type: integer
+      required:
+      - actualizado_en
+      - creado_en
+      - direccion_ip
+      - id
+      - nombre
+      - plan
+      - plan_nombre
+      - router
+      - router_nombre
+      - tipo
+    EstadoB1eEnum:
+      enum:
+      - activo
+      - suspendido
+      type: string
+      description: |-
+        * `activo` - Activo
+        * `suspendido` - Suspendido
+    Factura:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        cliente_nombre:
+          type: string
+          readOnly: true
+        periodo:
+          type: string
+          format: date
+          description: Primer día del mes facturado
+        monto:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        fecha_emision:
+          type: string
+          format: date
+          readOnly: true
+        fecha_vencimiento:
+          type: string
+          format: date
+        estado:
+          $ref: '#/components/schemas/FacturaEstadoEnum'
+        observaciones:
+          type: string
+        creado_en:
+          type: string
+          format: date-time
+          readOnly: true
+        actualizado_en:
+          type: string
+          format: date-time
+          readOnly: true
+        cliente:
+          type: integer
+      required:
+      - actualizado_en
+      - cliente
+      - cliente_nombre
+      - creado_en
+      - fecha_emision
+      - fecha_vencimiento
+      - id
+      - monto
+      - periodo
+    FacturaEstadoEnum:
+      enum:
+      - pendiente
+      - pagada
+      - vencida
+      - anulada
+      type: string
+      description: |-
+        * `pendiente` - Pendiente
+        * `pagada` - Pagada
+        * `vencida` - Vencida
+        * `anulada` - Anulada
+    MetodoEnum:
+      enum:
+      - efectivo
+      - transferencia
+      - tarjeta
+      - otro
+      type: string
+      description: |-
+        * `efectivo` - Efectivo
+        * `transferencia` - Transferencia
+        * `tarjeta` - Tarjeta
+        * `otro` - Otro
+    Pago:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        monto:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        metodo:
+          $ref: '#/components/schemas/MetodoEnum'
+        referencia:
+          type: string
+          maxLength: 100
+        registrado_en:
+          type: string
+          format: date-time
+          readOnly: true
+        factura:
+          type: integer
+        registrado_por:
+          type: integer
+          readOnly: true
+          nullable: true
+      required:
+      - factura
+      - id
+      - metodo
+      - monto
+      - registrado_en
+      - registrado_por
+    PatchedClientePPPoE:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        router_nombre:
+          type: string
+          readOnly: true
+        plan_nombre:
+          type: string
+          readOnly: true
+        usuario_pppoe:
+          type: string
+          description: User para el secret
+          maxLength: 100
+        password_pppoe:
+          type: string
+          description: Password para el secret
+          maxLength: 100
+        nombre_completo:
+          type: string
+          maxLength: 200
+        estado:
+          $ref: '#/components/schemas/EstadoB1eEnum'
+        direccion_ip_antena:
+          type: string
+          nullable: true
+          description: IP del equipo o antena que sirve al cliente
+        portal_token:
+          type: string
+          format: uuid
+          readOnly: true
+        creado_en:
+          type: string
+          format: date-time
+          readOnly: true
+        router:
+          type: integer
+        plan:
+          type: integer
+    PatchedClienteRed:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        router_nombre:
+          type: string
+          readOnly: true
+        plan_nombre:
+          type: string
+          readOnly: true
+        nombre:
+          type: string
+          maxLength: 200
+        tipo:
+          $ref: '#/components/schemas/TipoEnum'
+        direccion_ip:
+          type: string
+        direccion_mac:
+          type: string
+          maxLength: 17
+        interfaz_mikrotik:
+          type: string
+          description: Interfaz de LAN usada para reservas ARP estáticas e IP fija
+          maxLength: 100
+        servidor_dhcp:
+          type: string
+          description: Nombre opcional del servidor DHCP; déjalo vacío si solo existe
+            uno
+          maxLength: 100
+        cola_mikrotik:
+          type: string
+          maxLength: 100
+        routeros_id:
+          type: string
+          maxLength: 100
+        estado:
+          $ref: '#/components/schemas/EstadoB1eEnum'
+        creado_en:
+          type: string
+          format: date-time
+          readOnly: true
+        actualizado_en:
+          type: string
+          format: date-time
+          readOnly: true
+        router:
+          type: integer
+        plan:
+          type: integer
+    PatchedFactura:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        cliente_nombre:
+          type: string
+          readOnly: true
+        periodo:
+          type: string
+          format: date
+          description: Primer día del mes facturado
+        monto:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        fecha_emision:
+          type: string
+          format: date
+          readOnly: true
+        fecha_vencimiento:
+          type: string
+          format: date
+        estado:
+          $ref: '#/components/schemas/FacturaEstadoEnum'
+        observaciones:
+          type: string
+        creado_en:
+          type: string
+          format: date-time
+          readOnly: true
+        actualizado_en:
+          type: string
+          format: date-time
+          readOnly: true
+        cliente:
+          type: integer
+    PatchedPago:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        monto:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        metodo:
+          $ref: '#/components/schemas/MetodoEnum'
+        referencia:
+          type: string
+          maxLength: 100
+        registrado_en:
+          type: string
+          format: date-time
+          readOnly: true
+        factura:
+          type: integer
+        registrado_por:
+          type: integer
+          readOnly: true
+          nullable: true
+    PatchedPlanVelocidad:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        nombre_perfil:
+          type: string
+          maxLength: 100
+        cola_padre:
+          type: string
+          description: Nombre de la cola padre en MikroTik
+          maxLength: 100
+        subida_mbps:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          description: Velocidad de subida en Mbps
+        bajada_mbps:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          description: Velocidad de bajada en Mbps
+        router:
+          type: integer
+    PatchedRouter:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        password:
+          type: string
+          writeOnly: true
+        nombre:
+          type: string
+          maxLength: 100
+        ip_address:
+          type: string
+        puerto_api:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        usuario:
+          type: string
+          maxLength: 50
+        activo:
+          type: boolean
+        creado_en:
+          type: string
+          format: date-time
+          readOnly: true
+    PingClienteRequest:
+      type: object
+      properties:
+        ip:
+          type: string
+          description: Dirección de destino opcional. Si se omite se usa direccion_ip_antena.
+    PingClienteResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        destino:
+          type: string
+        resultado:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - destino
+      - resultado
+      - status
+    PlanVelocidad:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        nombre_perfil:
+          type: string
+          maxLength: 100
+        cola_padre:
+          type: string
+          description: Nombre de la cola padre en MikroTik
+          maxLength: 100
+        subida_mbps:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          description: Velocidad de subida en Mbps
+        bajada_mbps:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          description: Velocidad de bajada en Mbps
+        router:
+          type: integer
+      required:
+      - bajada_mbps
+      - id
+      - nombre_perfil
+      - router
+      - subida_mbps
+    PortalClienteResponse:
+      type: object
+      properties:
+        cliente:
+          type: string
+        estado:
+          type: string
+        servicio:
+          type: string
+        mensaje:
+          type: string
+      required:
+      - cliente
+      - estado
+      - mensaje
+      - servicio
+    Router:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        password:
+          type: string
+          writeOnly: true
+        nombre:
+          type: string
+          maxLength: 100
+        ip_address:
+          type: string
+        puerto_api:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        usuario:
+          type: string
+          maxLength: 50
+        activo:
+          type: boolean
+        creado_en:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - creado_en
+      - id
+      - ip_address
+      - nombre
+      - password
+      - usuario
+    TipoEnum:
+      enum:
+      - dhcp
+      - ip_fija
+      type: string
+      description: |-
+        * `dhcp` - DHCP
+        * `ip_fija` - IP fija
+    UsuariosActivosResponse:
+      type: object
+      properties:
+        routers:
+          type: array
+          items:
+            type: string
+        total_conectados:
+          type: integer
+        conexiones:
+          type: array
+          items:
+            type: string
+        errores:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - conexiones
+      - errores
+      - routers
+      - total_conectados
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+    tokenAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: Token-based authentication with required prefix "Token"
