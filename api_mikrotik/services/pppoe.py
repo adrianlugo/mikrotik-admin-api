@@ -1,6 +1,7 @@
 import logging
 from django.db import transaction
 from .base import MikroTikBaseService
+from ..utils import convertir_rate_limit_a_mbps
 
 logger = logging.getLogger(__name__)
 
@@ -150,31 +151,7 @@ class PPPoEService(MikroTikBaseService):
         except Exception as e:
             logger.error(f"Error creando perfil en MikroTik: {e}")
             return {"status": "error", "message": str(e)}
-
-    @staticmethod
-    def _velocidades_desde_router(rate_limit, subida_default=5, bajada_default=10):
-        import re
-        subida, bajada = subida_default, bajada_default
-        if not rate_limit or '/' not in rate_limit:
-            return subida, bajada
-
-        def a_mbps(valor):
-            coincidencia = re.fullmatch(r'(\d+(?:\.\d+)?)([kmgt]?)(?:bps)?', valor.strip().lower())
-            if not coincidencia:
-                return None
-            numero, unidad = float(coincidencia.group(1)), coincidencia.group(2)
-            factores = {'': 1 / 1000000, 'k': 1 / 1000, 'm': 1, 'g': 1000, 't': 1000000}
-            resultado = numero * factores[unidad]
-            return max(1, int(resultado))
-
-        partes = rate_limit.split('/', 1)
-        upload = a_mbps(partes[0])
-        download = a_mbps(partes[1])
-        if upload is not None:
-            subida = upload
-        if download is not None:
-            bajada = download
-        return subida, bajada
+  
 
     def sincronizar_bidireccional(self):
         from api_mikrotik.models import PlanVelocidad, ClientePPPoE
@@ -197,7 +174,7 @@ class PPPoEService(MikroTikBaseService):
 
             with transaction.atomic():
                 for nombre, perfil in perfiles_por_nombre.items():
-                    subida, bajada = self._velocidades_desde_router(perfil.get('rate-limit', ''))
+                    subida, bajada = convertir_rate_limit_a_mbps(perfil.get('rate-limit', ''))
                     plan, created = PlanVelocidad.objects.update_or_create(
                         router=self.router,
                         nombre_perfil=nombre,
