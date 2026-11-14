@@ -2,6 +2,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIRequestFactory, force_authenticate
+from api_mikrotik.utils import convertir_rate_limit_a_mbps
 
 from api_mikrotik.models import ClientePPPoE, PlanVelocidad, Router
 from api_mikrotik.services import PPPoEService
@@ -83,11 +84,11 @@ class PPPoESyncTests(TestCase):
 
     def test_rate_limit_conversion_supports_router_units(self):
         self.assertEqual(
-            PPPoEService._velocidades_desde_router('5M/20M'),
+            convertir_rate_limit_a_mbps('5M/20M'),
             (5, 20)
         )
         self.assertEqual(
-            PPPoEService._velocidades_desde_router('10240k/20480k'),
+            convertir_rate_limit_a_mbps('10240k/20480k'),
             (10, 20)
         )
 
