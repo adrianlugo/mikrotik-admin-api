@@ -1,6 +1,10 @@
 import logging
 from django.conf import settings
 
+from api_mikrotik.exceptions import MikroTikConnectionError
+
+
+
 logger = logging.getLogger(__name__)
 
 class MikroTikBaseService:
@@ -24,14 +28,18 @@ class MikroTikBaseService:
         
         ip = getattr(self.router, 'ip_address', getattr(self.router, 'ip', None))
         
-        api_pool = routeros_api.RouterOsApiPool(
-            ip,
-            username=self.router.usuario,
-            password=self.router.password,
-            port=int(self.router.puerto_api),
-            plaintext_login=True
-        )
-        return api_pool.get_api()
+        try:
+            api_pool = routeros_api.RouterOsApiPool(
+                ip,
+                username=self.router.usuario,
+                password=self.router.password,
+                port=int(self.router.puerto_api),
+                plaintext_login=True
+            )
+            return api_pool.get_api()
+        except Exception as e:
+            # Lanzamos nuestra excepción personalizada de dominio
+            raise MikroTikConnectionError(f"No se pudo conectar al router {self.router.nombre}: {str(e)}")
 
     def _simular_operacion(self, mensaje):
         """Método auxiliar para simular operaciones"""

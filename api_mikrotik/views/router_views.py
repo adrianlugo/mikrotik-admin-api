@@ -25,11 +25,10 @@ class RouterViewSet(viewsets.ModelViewSet):
     @extend_schema(summary="Verificar conexión del router", tags=['Routers MikroTik'])
     @action(detail=True, methods=['post'], url_path='verificar-conexion')
     def verificar_conexion(self, request, pk=None):
-        router = self.get_object()
+        router = self.get_object()           
         resultado = MikroTikBaseService(router).verificar_conexion()
-        status_code = status.HTTP_200_OK if resultado['status'] == 'success' else status.HTTP_502_BAD_GATEWAY
-        return Response(resultado, status=status_code)
-
+        return Response(resultado, status=status.HTTP_200_OK)
+         
     @extend_schema(summary="Sincronizar este router", tags=['Routers MikroTik'])
     @action(detail=True, methods=['post'], url_path='sincronizar')
     def sincronizar(self, request, pk=None):
