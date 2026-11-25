@@ -105,7 +105,7 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
             mikrotik_service = PPPoEService(router)
             resultado = mikrotik_service.crear_usuario_pppoe(
                 usuario=cliente.usuario_pppoe,
-                password=cliente.password_pppoe,
+                password=cliente.get_password_pppoe(),
                 plan_perfil=plan.nombre_perfil
             )
             
@@ -132,7 +132,7 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
             resultado = mikrotik_service.actualizar_usuario_pppoe(
                 usuario_antiguo=usuario_antiguo,
                 nuevo_usuario=cliente_actualizado.usuario_pppoe,
-                nuevo_password=cliente_actualizado.password_pppoe,
+                nuevo_password=cliente_actualizado.get_password_pppoe(),
                 nuevo_plan_perfil=cliente_actualizado.plan.nombre_perfil
             )
             
@@ -194,7 +194,7 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
                 resultado = mikrotik_service.actualizar_usuario_pppoe(
                     usuario_antiguo=cliente.usuario_pppoe,
                     nuevo_usuario=cliente.usuario_pppoe,
-                    nuevo_password=cliente.password_pppoe,
+                    nuevo_password=cliente.get_password_pppoe(),
                     nuevo_plan_perfil=cliente.plan.nombre_perfil
                 )
                 

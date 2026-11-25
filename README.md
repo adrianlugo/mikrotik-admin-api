@@ -54,7 +54,7 @@ PPPoe usa profiles para aplicar el plan; DHCP e IP fija usan una cola simple hij
 - Dependencias indicadas en `requirements.txt`.
 - PostgreSQL, SQLite u otro motor compatible configurado en Django.
 - API RouterOS habilitada y credenciales dedicadas.
-- Puerto API disponible, normalmente 8728 para RouterOS clásico.
+- API-SSL habilitado en el router (puerto 8729) con un certificado válido; el puerto 8728 sin cifrar está bloqueado por defecto (ver [Seguridad](docs/security.md)).
 
 ## Instalación de desarrollo
 
@@ -62,10 +62,23 @@ PPPoe usa profiles para aplicar el plan; DHCP e IP fija usan una cola simple hij
 py -m venv venv
 .\venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
+cp .env.example .env
+# Edita .env: define DJANGO_SECRET_KEY y MIKROTIK_CREDENTIALS_KEY
+# (genera los valores con los comandos indicados en .env.example).
 python manage.py migrate
 python manage.py createsuperuser
 python manage.py runserver
 ```
+
+Si ya tenías routers y clientes guardados con contraseñas en texto plano,
+cifra las credenciales existentes después de configurar la clave:
+
+```powershell
+python manage.py cifrar_credenciales
+```
+
+Ver [Seguridad](docs/security.md) para la rotación de la `SECRET_KEY`, el
+cifrado de credenciales y la configuración de API-SSL en el router.
 
 Después abre:
 
@@ -153,6 +166,7 @@ python manage.py spectacular --file api-schema.yaml --validate
 - [Catálogo completo de endpoints](docs/api.md)
 - [Arquitectura y modelo operativo](docs/architecture.md)
 - [Sincronización bidireccional](docs/synchronization.md)
+- [Seguridad: variables de entorno, cifrado de credenciales y API-SSL](docs/security.md)
 
 ## Convenciones de desarrollo
 
@@ -167,9 +181,9 @@ python manage.py spectacular --file api-schema.yaml --validate
 
 Antes de publicar el servicio públicamente:
 
-1. Reemplaza la clave Django y desactiva `DEBUG`.
+1. Rota la clave Django (la anterior está en el historial de Git) y define `DJANGO_SECRET_KEY` en el entorno; `DEBUG` ya es `false` por defecto.
 2. Limita hosts permitidos, CORS y origenes aceptados.
-3. Usa HTTPS.
+3. Usa HTTPS y API-SSL en el router (puerto 8729); las contraseñas de routers y clientes se cifran con `MIKROTIK_CREDENTIALS_KEY` (ver [Seguridad](docs/security.md)).
 4. Protege las credenciales RouterOS y PostgreSQL.
 5. Activa copias de seguridad y registro de auditoría.
 6. Prueba en un entorno aislado y valida cada operación contra el RouterOS real.

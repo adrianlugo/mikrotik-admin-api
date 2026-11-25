@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import viewsets, status, serializers
 from rest_framework.response import Response
 from rest_framework.decorators import action
@@ -29,7 +30,7 @@ class PlanVelocidadViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        with transaction.atomic(): # type: ignore
+        with transaction.atomic():
             plan = serializer.save()
             pppoe_service = PPPoEService(plan.router)
             traffic_service = TrafficService(plan.router)
@@ -64,7 +65,7 @@ class PlanVelocidadViewSet(viewsets.ModelViewSet):
         plan = self.get_object()
         serializer = self.get_serializer(plan, data=request.data, partial=parcial)
         serializer.is_valid(raise_exception=True)
-        with transaction.atomic(): # type: ignore
+        with transaction.atomic():
             plan = serializer.save()
             if not plan.cola_padre:
                 plan.cola_padre = f"Plan-{plan.nombre_perfil}"

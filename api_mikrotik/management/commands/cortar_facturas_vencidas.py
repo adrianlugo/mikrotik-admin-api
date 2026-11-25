@@ -3,7 +3,7 @@ from datetime import date
 from django.core.management.base import BaseCommand
 
 from api_mikrotik.models import Factura
-from api_mikrotik.services import MikroTikService
+from api_mikrotik.services import PPPoEService
 
 
 class Command(BaseCommand):
@@ -23,7 +23,7 @@ class Command(BaseCommand):
             marcadas += 1
             cliente = factura.cliente
             if cliente.estado != 'suspendido':
-                resultado = MikroTikService(cliente.router).suspender_usuario_pppoe(
+                resultado = PPPoEService(cliente.router).suspender_usuario_pppoe(
                     usuario_pppoe=cliente.usuario_pppoe,
                     perfil_corte='Perfil_Corte',
                 )

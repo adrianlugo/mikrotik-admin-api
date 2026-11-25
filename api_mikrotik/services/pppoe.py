@@ -224,7 +224,7 @@ class PPPoEService(MikroTikBaseService):
                 for cliente in ClientePPPoE.objects.filter(router=self.router).select_related('plan'):
                     secreto = secretos_por_nombre.get(cliente.usuario_pppoe)
                     parametros = {
-                        'password': cliente.password_pppoe,
+                        'password': cliente.get_password_pppoe(),
                         'profile': cliente.plan.nombre_perfil,
                         'service': 'pppoe',
                     }
