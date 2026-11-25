@@ -2,3 +2,9 @@
 __pycache__/
 *.pyc
 db.sqlite3
+# Variables de entorno con secretos: nunca se suben al repositorio.
+.env
+.env.*
+!.env.example
+venv/
+*.log

@@ -4,20 +4,25 @@ from .models import ClientePPPoE, ClienteRed, Factura, Pago, PlanVelocidad, Rout
 
 
 class RouterSerializer(serializers.ModelSerializer):
+    # write_only: la contraseña nunca se devuelve en las respuestas de la API.
     password = serializers.CharField(write_only=True, trim_whitespace=False)
 
     class Meta:
         model = Router
-        fields = '__all__'
+        fields = ('id', 'nombre', 'ip_address', 'puerto_api', 'usuario', 'password', 'activo', 'creado_en')
 
 class ClientePPPoESerializer(serializers.ModelSerializer):
     # Declaramos explícitamente los campos para poder aplicar estilos de lectura en las respuestas
     router_nombre = serializers.CharField(source='router.nombre', read_only=True)
     plan_nombre = serializers.CharField(source='plan.nombre_perfil', read_only=True)
+    # write_only: la contraseña nunca se devuelve en las respuestas de la API.
+    password_pppoe = serializers.CharField(write_only=True, trim_whitespace=False)
 
     class Meta:
         model = ClientePPPoE
-        fields = '__all__'
+        # portal_token queda fuera a propósito: es un secreto de portador y
+        # solo se usa internamente para localizar al cliente en el portal.
+        fields = ('id', 'router', 'router_nombre', 'plan', 'plan_nombre', 'usuario_pppoe', 'password_pppoe', 'nombre_completo', 'estado', 'direccion_ip_antena', 'creado_en')
 
     def validate_usuario_pppoe(self, value):
         """

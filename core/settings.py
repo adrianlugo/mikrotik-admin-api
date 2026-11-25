@@ -10,7 +10,12 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
+import os
+import warnings
 from pathlib import Path
+
+from django.core.exceptions import ImproperlyConfigured
+from django.core.management.utils import get_random_secret_key
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -18,14 +23,39 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
+#
+# La configuración sensible vive en variables de entorno (ver .env.example).
+# Nunca escribas claves reales en este archivo ni en el repositorio.
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-#6soew@5%-w6rc(+gfan_ak*9=z1+tuc0&bxl7we(#yiz)b8zd'
+# DEBUG por defecto es False: en producción nunca debe activarse.
+DEBUG = os.environ.get('DJANGO_DEBUG', 'false').strip().lower() in ('1', 'true', 'yes', 'on')
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', '')
+if not SECRET_KEY:
+    if DEBUG:
+        warnings.warn(
+            'DJANGO_SECRET_KEY no está definida: se usa una clave efímera '
+            'generada al azar, solo válida para desarrollo. Las sesiones y '
+            'tokens dejarán de ser válidos al reiniciar. Define '
+            'DJANGO_SECRET_KEY en el entorno (ver .env.example).'
+        )
+        SECRET_KEY = get_random_secret_key()
+    else:
+        raise ImproperlyConfigured(
+            'DJANGO_SECRET_KEY no está definida. Genera una con: python -c '
+            '"from django.core.management.utils import get_random_secret_key; '
+            'print(get_random_secret_key())" y definela en el entorno. La '
+            'clave anterior, que estaba escrita en este archivo, debe rotarse: '
+            'ya está en el historial de Git y hay que considerarla expuesta.'
+        )
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',')
+    if host.strip()
+]
+if DEBUG and not ALLOWED_HOSTS:
+    ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
 
 
 # Application definition
@@ -83,8 +113,12 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': os.environ.get('DJANGO_DATABASE_ENGINE', 'django.db.backends.sqlite3'),
+        'NAME': os.environ.get('DJANGO_DATABASE_NAME') or BASE_DIR / 'db.sqlite3',
+        'USER': os.environ.get('DJANGO_DATABASE_USER', ''),
+        'PASSWORD': os.environ.get('DJANGO_DATABASE_PASSWORD', ''),
+        'HOST': os.environ.get('DJANGO_DATABASE_HOST', ''),
+        'PORT': os.environ.get('DJANGO_DATABASE_PORT', ''),
     }
 }
 
@@ -129,14 +163,23 @@ STATIC_URL = 'static/'
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
-MAILERS = {
-    'default': {
-        'BACKEND': 'django.core.mail.backends.console.EmailBackend',
-    },
-}
+EMAIL_BACKEND = os.environ.get(
+    'DJANGO_EMAIL_BACKEND',
+    'django.core.mail.backends.console.EmailBackend',
+)
 
 # Activa el modo simulación para desarrollar sin un MikroTik físico conectado
 MIKROTIK_SIMULATION_MODE = False
+
+# Credenciales MikroTik: la clave Fernet de MIKROTIK_CREDENTIALS_KEY cifra
+# las contraseñas de routers y clientes PPPoE en la base de datos.
+# Sin ella, las contraseñas se guardan en texto plano (ver docs/security.md).
+# Seguridad de la conexión RouterOS (ver api_mikrotik/services/base.py):
+# por defecto solo se permite API-SSL (puerto 8729, con verificación del
+# certificado). MIKROTIK_ALLOW_INSECURE_API=true solo para laboratorio.
+MIKROTIK_SSL_VERIFY = os.environ.get('MIKROTIK_SSL_VERIFY', 'true').strip().lower() in ('1', 'true', 'yes', 'on')
+MIKROTIK_SSL_VERIFY_HOSTNAME = os.environ.get('MIKROTIK_SSL_VERIFY_HOSTNAME', 'true').strip().lower() in ('1', 'true', 'yes', 'on')
+MIKROTIK_ALLOW_INSECURE_API = os.environ.get('MIKROTIK_ALLOW_INSECURE_API', 'false').strip().lower() in ('1', 'true', 'yes', 'on')
 
 REST_FRAMEWORK = {
     'EXCEPTION_HANDLER': 'api_mikrotik.exceptions.custom_exception_handler',
@@ -167,7 +210,7 @@ SPECTACULAR_SETTINGS = {
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
     origin.strip()
-    for origin in __import__('os').environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',')
+    for origin in os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',')
     if origin.strip()
 ]
 

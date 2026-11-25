@@ -23,20 +23,52 @@ class MikroTikBaseService:
         self.simulado = getattr(settings, 'MIKROTIK_SIMULATION_MODE', True)
 
     def _obtener_conexion_real(self):
-        """Método auxiliar interno para abrir la conexión hacia el router real usando el Pool oficial"""
+        """Método auxiliar interno para abrir la conexión hacia el router real usando el Pool oficial.
+
+        La conexión usa API-SSL (TLS, puerto 8729) por defecto. El parámetro
+        ``plaintext_login=True`` es obligatorio en RouterOS >= 6.43, pero la
+        contraseña NO viaja en texto plano por la red: va dentro de la sesión
+        TLS. Sin SSL, la conexión se rechaza salvo que se active de forma
+        explícita ``MIKROTIK_ALLOW_INSECURE_API=true`` (solo laboratorio).
+        El router necesita el servicio api-ssl habilitado con un certificado
+        (ver ``docs/security.md``).
+        """
         import routeros_api
-        
+
         ip = getattr(self.router, 'ip_address', getattr(self.router, 'ip', None))
-        
+        port = int(getattr(self.router, 'puerto_api', 8729) or 8729)
+        use_ssl = port == 8729
+
+        if not use_ssl and not getattr(settings, 'MIKROTIK_ALLOW_INSECURE_API', False):
+            raise MikroTikConnectionError(
+                f"La conexión sin cifrar al router {self.router.nombre} (puerto {port}) está bloqueada. "
+                "Habilita el servicio api-ssl en el router y cambia puerto_api a 8729, "
+                "o define MIKROTIK_ALLOW_INSECURE_API=true solo para laboratorio."
+            )
+        if not use_ssl:
+            logger.warning(
+                "Conexión sin SSL al router %s (puerto %s): las credenciales viajan sin cifrar. "
+                "Usa API-SSL (puerto 8729) en cuanto sea posible.",
+                self.router.nombre, port,
+            )
+
+        get_password = getattr(self.router, 'get_password', None)
+        router_password = get_password() if callable(get_password) else self.router.password
+
         try:
             api_pool = routeros_api.RouterOsApiPool(
                 ip,
                 username=self.router.usuario,
-                password=self.router.password,
-                port=int(self.router.puerto_api),
-                plaintext_login=True
+                password=router_password,
+                port=port,
+                plaintext_login=True,
+                use_ssl=use_ssl,
+                ssl_verify=getattr(settings, 'MIKROTIK_SSL_VERIFY', True),
+                ssl_verify_hostname=getattr(settings, 'MIKROTIK_SSL_VERIFY_HOSTNAME', True),
             )
             return api_pool.get_api()
+        except MikroTikConnectionError:
+            raise
         except Exception as e:
             # Lanzamos nuestra excepción personalizada de dominio
             raise MikroTikConnectionError(f"No se pudo conectar al router {self.router.nombre}: {str(e)}")

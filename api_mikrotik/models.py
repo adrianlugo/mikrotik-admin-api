@@ -3,6 +3,8 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from .crypto import decrypt_value, encrypt_value
+
 
 class PerfilUsuario(models.Model):
     ROLES = (
@@ -21,11 +23,20 @@ class Router(models.Model):
     """Guarda la información de conexión de cada MikroTik en tu red"""
     nombre = models.CharField(max_length=100, unique=True)
     ip_address = models.GenericIPAddressField(unique=True)
-    puerto_api = models.IntegerField(default=8728) # 8728 por defecto para v6, u otro para REST v7
+    puerto_api = models.IntegerField(default=8729, help_text="Puerto de la API RouterOS: 8729 (API-SSL, recomendado) o 8728 (sin cifrar, solo laboratorio)")
     usuario = models.CharField(max_length=50)
-    password = models.CharField(max_length=128) # Almacenado de forma segura en producción
+    password = models.CharField(max_length=255, help_text="Contraseña de la API del router. Se cifra en reposo cuando MIKROTIK_CREDENTIALS_KEY está configurada.")
     activo = models.BooleanField(default=True)
     creado_en = models.DateTimeField(auto_now_add=True)
+
+    def get_password(self):
+        """Devuelve la contraseña de la API descifrada (o en texto plano si es una credencial antigua sin cifrar)."""
+        return decrypt_value(self.password)
+
+    def save(self, *args, **kwargs):
+        if self.password:
+            self.password = encrypt_value(self.password)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.nombre} ({self.ip_address})"
@@ -54,12 +65,21 @@ class ClientePPPoE(models.Model):
     router = models.ForeignKey(Router, on_delete=models.PROTECT)
     plan = models.ForeignKey(PlanVelocidad, on_delete=models.PROTECT)
     usuario_pppoe = models.CharField(max_length=100, unique=True, help_text="User para el secret")
-    password_pppoe = models.CharField(max_length=100, help_text="Password para el secret")
+    password_pppoe = models.CharField(max_length=255, help_text="Password para el secret. Se cifra en reposo cuando MIKROTIK_CREDENTIALS_KEY está configurada.")
     nombre_completo = models.CharField(max_length=200)
     estado = models.CharField(max_length=20, choices=ESTADOS, default='activo')
     direccion_ip_antena = models.GenericIPAddressField(blank=True, null=True, help_text="IP del equipo o antena que sirve al cliente")
     portal_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     creado_en = models.DateTimeField(auto_now_add=True)
+
+    def get_password_pppoe(self):
+        """Devuelve la contraseña PPPoE descifrada (o en texto plano si es una credencial antigua sin cifrar)."""
+        return decrypt_value(self.password_pppoe)
+
+    def save(self, *args, **kwargs):
+        if self.password_pppoe:
+            self.password_pppoe = encrypt_value(self.password_pppoe)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.usuario_pppoe} - {self.nombre_completo}"
