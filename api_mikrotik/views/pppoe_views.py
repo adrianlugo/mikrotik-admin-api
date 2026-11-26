@@ -1,5 +1,6 @@
 import uuid
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from rest_framework import viewsets, status, serializers
 from rest_framework.response import Response
@@ -93,7 +94,14 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
                 errores.append({"router": router.nombre, "mensaje": "No fue posible consultar las sesiones"})
 
         if not routers_consultados:
-            return Response({"error": "No hay clientes PPPoE asociados a routers registrados"}, status=status.HTTP_400_BAD_REQUEST)
+            # Sin routers con clientes no hay nada que consultar: es un
+            # estado vacío, no un error (antes devolvía 400).
+            return Response({
+                "routers": [],
+                "total_conectados": 0,
+                "conexiones": [],
+                "errores": [],
+            }, status=status.HTTP_200_OK)
 
         if errores and not usuarios_activos and len(errores) == len(routers_consultados):
             # Ningún router respondió: no es «0 conectados», es un error.
@@ -103,6 +111,7 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
                 "conexiones": [],
                 "errores": errores,
                 "error": "Ningún router respondió a la consulta de sesiones activas.",
+                "codigo": "mikrotik_error",
             }, status=status.HTTP_502_BAD_GATEWAY)
 
         return Response({
@@ -155,7 +164,13 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
             )
             
             if resultado.get("status") == "error":
-                raise serializers.ValidationError({"mikrotik_error": resultado.get("message")})
+                # Fallo de RouterOS: es un error del router (502), nunca
+                # un error de validación (400). El manejador global lo
+                # convierte al formato único {error, codigo} y la
+                # transacción revierte el cliente creado.
+                raise MikroTikConnectionError(
+                    resultado.get("message") or "No se pudo crear el usuario en el router."
+                )
         
         headers = self.get_success_headers(serializer.data)
         return Response({
@@ -182,7 +197,9 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
             )
             
             if resultado.get("status") == "error":
-                raise serializers.ValidationError({"mikrotik_error": resultado.get("message")})
+                raise MikroTikConnectionError(
+                    resultado.get("message") or "No se pudo actualizar el usuario en el router."
+                )
                 
         return Response({
             "cliente": serializer.data,
@@ -199,7 +216,9 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
             resultado = mikrotik_service.eliminar_usuario_pppoe(usuario_pppoe)
             
             if resultado.get("status") == "error":
-                return Response({"mikrotik_error": resultado.get("message")}, status=status.HTTP_502_BAD_GATEWAY)
+                raise MikroTikConnectionError(
+                    resultado.get("message") or "No se pudo eliminar el usuario del router."
+                )
             
             cliente.delete()
             
@@ -207,6 +226,9 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
             "message": "Cliente eliminado localmente y del MikroTik",
             "mikrotik_status": resultado
         }, status=status.HTTP_200_OK)
+        # Se mantiene el 200 con mensaje (y no el 204 habitual de DELETE)
+        # a propósito: la web espera este formato (ver docs/api.md,
+        # «Errores»). Cambiarlo a 204 rompería a la web.
 
     @extend_schema(
         summary="Cambiar estado del cliente (Suspender/Reactivar)",
@@ -244,7 +266,9 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
                 )
                 
             if resultado.get("status") == "error":
-                raise serializers.ValidationError({"mikrotik_error": resultado.get("message")})
+                raise MikroTikConnectionError(
+                    resultado.get("message") or "No se pudo cambiar el estado del cliente en el router."
+                )
             
         return Response({
             "message": f"Estado del cliente actualizado a {nuevo_estado}",
@@ -283,7 +307,9 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
 def portal_cliente(request, token):
     try:
         cliente = ClientePPPoE.objects.select_related('plan').get(portal_token=token)
-    except (ClientePPPoE.DoesNotExist, ValueError, TypeError):
+    except (ClientePPPoE.DoesNotExist, ValueError, TypeError, DjangoValidationError):
+        # DjangoValidationError: el token no tiene formato UUID válido
+        # (por ejemplo «abc»), así que no hay cliente que buscar.
         return Response({'detail': 'Enlace de cliente inválido.'}, status=status.HTTP_404_NOT_FOUND)
     return Response({
         'cliente': cliente.nombre_completo,
