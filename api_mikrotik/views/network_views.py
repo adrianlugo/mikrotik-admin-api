@@ -12,6 +12,77 @@ from api_mikrotik.services import PPPoEService, NetworkClientService, TrafficSer
 from api_mikrotik.permissions import PermisoOperativo
 
 
+def _quiere_crear_cola_padre(request):
+    """True si la petición pide explícitamente crear la cola Plan-{perfil}.
+
+    Acepta ``crear_cola_padre=true`` en el cuerpo JSON o en el formulario.
+    Sin este flag, un plan sin cola padre se guarda sin cola padre (none)
+    y la API no genera ninguna cola.
+    """
+    valor = request.data.get('crear_cola_padre', False)
+    if isinstance(valor, bool):
+        return valor
+    return str(valor).strip().lower() in ('1', 'true', 'yes', 'on', 'si', 'sí')
+
+
+def _sincronizar_plan_en_router(plan, crear_cola_padre_explicito, es_actualizacion):
+    """Crea/actualiza el perfil PPPoE y, si toca, la cola padre en el router.
+
+    Orden seguro: primero el perfil y solo después la cola padre, para no
+    tocar la cola si crear el perfil falla. Si el perfil falla, se lanza
+    ValidationError y la transacción que llamó revierte el plan en Django.
+
+    Cola padre:
+    - Con nombre: se sincroniza el perfil con esa cola y se asegura la cola
+      (si ya existe en el router, NO se toca su max-limit; si no existe, se
+      crea con el límite del plan y se avisa de que eso capa el total).
+    - Vacía y sin flag explícito: sin cola padre (none). En creación el
+      perfil nuevo ya nace con parent-queue none; en actualización se envía
+      parent-queue=none para quitar la cola anterior del perfil.
+    - Vacía con ``crear_cola_padre=true``: se genera ``Plan-{nombre_perfil}``
+      y se crea con el límite del plan (con el aviso de que capa el total).
+    """
+    if not plan.cola_padre and crear_cola_padre_explicito:
+        plan.cola_padre = f"Plan-{plan.nombre_perfil}"
+        plan.save(update_fields=['cola_padre'])
+
+    pppoe_service = PPPoEService(plan.router)
+    traffic_service = TrafficService(plan.router)
+
+    cola_para_perfil = plan.cola_padre
+    if not cola_para_perfil and es_actualizacion:
+        cola_para_perfil = 'none'
+    resultado = pppoe_service.crear_perfil_velocidad(
+        nombre_perfil=plan.nombre_perfil,
+        subida=f"{plan.subida_mbps}M",
+        bajada=f"{plan.bajada_mbps}M",
+        cola_padre=cola_para_perfil,
+        direccion_local=plan.direccion_local,
+        pool_remoto=plan.pool_remoto,
+    )
+    if resultado.get("status") == "error":
+        raise serializers.ValidationError({"mikrotik_error": resultado.get("message")})
+
+    if plan.cola_padre:
+        resultado_cola = traffic_service.asegurar_cola_padre(
+            plan.cola_padre, plan.subida_mbps, plan.bajada_mbps
+        )
+        if resultado_cola.get("status") == "error":
+            raise serializers.ValidationError({"mikrotik_error": resultado_cola.get("message")})
+    else:
+        resultado_cola = {
+            "status": "none",
+            "message": (
+                "Sin cola padre (none): el plan no tiene cola padre y la API "
+                "no generó ninguna. Para crear la cola Plan-"
+                f"{plan.nombre_perfil} con el "
+                "límite del plan, repite la petición con crear_cola_padre=true "
+                "(ojo: ese límite capa el total del plan; ver docs/api.md)."
+            ),
+        }
+    return resultado, resultado_cola
+
+
 @extend_schema_view(
     list=extend_schema(summary="Listar planes de velocidad", tags=['Planes de velocidad']),
     retrieve=extend_schema(summary="Consultar un plan de velocidad", tags=['Planes de velocidad']),
@@ -32,28 +103,9 @@ class PlanVelocidadViewSet(viewsets.ModelViewSet):
 
         with transaction.atomic():
             plan = serializer.save()
-            pppoe_service = PPPoEService(plan.router)
-            traffic_service = TrafficService(plan.router)
-
-            if not plan.cola_padre:
-                plan.cola_padre = f"Plan-{plan.nombre_perfil}"
-                plan.save(update_fields=['cola_padre'])
-
-            resultado = pppoe_service.crear_perfil_velocidad(
-                nombre_perfil=plan.nombre_perfil,
-                subida=f"{plan.subida_mbps}M",
-                bajada=f"{plan.bajada_mbps}M",
-                cola_padre=plan.cola_padre,
-                direccion_local=plan.direccion_local,
-                pool_remoto=plan.pool_remoto,
+            resultado, resultado_cola = _sincronizar_plan_en_router(
+                plan, _quiere_crear_cola_padre(request), es_actualizacion=False
             )
-            resultado_cola = traffic_service.asegurar_cola_padre(
-                plan.cola_padre, plan.subida_mbps, plan.bajada_mbps
-            )
-            if resultado.get("status") == "error":
-                raise serializers.ValidationError({"mikrotik_error": resultado.get("message")})
-            if resultado_cola.get("status") == "error":
-                raise serializers.ValidationError({"mikrotik_error": resultado_cola.get("message")})
 
         headers = self.get_success_headers(serializer.data)
         return Response({
@@ -69,27 +121,9 @@ class PlanVelocidadViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
             plan = serializer.save()
-            if not plan.cola_padre:
-                plan.cola_padre = f"Plan-{plan.nombre_perfil}"
-                plan.save(update_fields=['cola_padre'])
-
-            pppoe_service = PPPoEService(plan.router)
-            traffic_service = TrafficService(plan.router)
-
-            perfil = pppoe_service.crear_perfil_velocidad(
-                nombre_perfil=plan.nombre_perfil,
-                subida=f"{plan.subida_mbps}M",
-                bajada=f"{plan.bajada_mbps}M",
-                cola_padre=plan.cola_padre,
-                direccion_local=plan.direccion_local,
-                pool_remoto=plan.pool_remoto,
+            perfil, cola = _sincronizar_plan_en_router(
+                plan, _quiere_crear_cola_padre(request), es_actualizacion=True
             )
-            cola = traffic_service.asegurar_cola_padre(plan.cola_padre, plan.subida_mbps, plan.bajada_mbps)
-
-            if perfil.get('status') == 'error':
-                raise serializers.ValidationError({"mikrotik_error": perfil.get('message')})
-            if cola.get('status') == 'error':
-                raise serializers.ValidationError({"mikrotik_error": cola.get('message')})
 
         return Response({"plan": PlanVelocidadSerializer(plan).data, "mikrotik_status": perfil, "cola_padre_status": cola})
 
@@ -138,16 +172,22 @@ class ClienteRedViewSet(viewsets.ModelViewSet):
         cliente = self.get_object()
         serializer = self.get_serializer(cliente, data=request.data, partial=kwargs.get('partial', False))
         serializer.is_valid(raise_exception=True)
-        cliente = serializer.save()
+        # Atómico: si la reserva o la cola fallan en el router, los cambios
+        # locales se revierten y la API devuelve 502. Antes el cliente
+        # quedaba guardado en Django aunque el router hubiera fallado.
+        with transaction.atomic():
+            cliente = serializer.save()
 
-        servicio = NetworkClientService(cliente.router)
-        reserva = servicio.sincronizar_reserva_cliente_red(cliente)
-        if reserva.get('status') == 'error':
-            return Response({"mikrotik_error": reserva.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
+            servicio = NetworkClientService(cliente.router)
+            reserva = servicio.sincronizar_reserva_cliente_red(cliente)
+            if reserva.get('status') == 'error':
+                transaction.set_rollback(True)
+                return Response({"mikrotik_error": reserva.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
 
-        cola = servicio.sincronizar_cola_cliente_red(cliente)
-        if cola.get('status') == 'error':
-            return Response({"mikrotik_error": cola.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
+            cola = servicio.sincronizar_cola_cliente_red(cliente)
+            if cola.get('status') == 'error':
+                transaction.set_rollback(True)
+                return Response({"mikrotik_error": cola.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
 
         return Response({
             "cliente": ClienteRedSerializer(cliente).data,
