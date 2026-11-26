@@ -257,6 +257,10 @@ Guarda una copia con fecha y hora en `backups/` y conserva las 7 últimas (`--de
 
 La API escribe sus registros en `logs/mikrotik-admin-api.log` (además de la consola); ahí quedan los errores de conexión con los routers. La ruta se cambia con `DJANGO_LOG_FILE`.
 
+## Errores
+
+Todas las respuestas de error usan un único formato, `{"error": "<mensaje claro en español>", "codigo": "<clave>"}`. El detalle técnico (trazas, rutas internas, mensajes crudos de RouterOS) queda solo en el registro, nunca en la respuesta. La tabla completa de códigos está en [Catálogo de la API](docs/api.md#errores) («Errores»): validación → 400, token inválido o caducado → 401, sin permiso → 403, no encontrado → 404, borrado protegido → 409, demasiadas peticiones → 429, router caído → 502, router sin respuesta a tiempo → 503 (`MIKROTIK_TIMEOUT_SEGUNDOS`, 10 s por defecto). El formato anterior `{"mikrotik_error": "..."}` ya no se emite; la web no leía esa clave de forma específica, así que no se rompe nada.
+
 ## Pruebas y validación
 
 ```bash
@@ -266,7 +270,7 @@ python manage.py test api_mikrotik
 python manage.py spectacular --file api-schema.yaml --validate
 ```
 
-La suite tiene 55 tests (29 anteriores + 26 nuevos de la preparación para producción, en `api_mikrotik/tests/test_produccion.py`). Nota: regenerar el esquema con `spectacular` pierde las descripciones detalladas que tiene el `api-schema.yaml` actual (fueron escritas en el esquema y no están en las anotaciones del código), así que si lo regeneras, revisa el diff antes de guardarlo. En CI (GitHub Actions, `.github/workflows/ci.yml`) se corre `check`, `makemigrations --check`, los tests y la validación del esquema en cada PR.
+La suite tiene 82 tests (57 anteriores + 25 nuevos de manejo de errores, en `api_mikrotik/tests/test_errores.py`). Nota: regenerar el esquema con `spectacular` pierde las descripciones detalladas que tiene el `api-schema.yaml` actual (fueron escritas en el esquema y no están en las anotaciones del código), así que si lo regeneras, revisa el diff antes de guardarlo. En CI (GitHub Actions, `.github/workflows/ci.yml`) se corre `check`, `makemigrations --check`, los tests y la validación del esquema en cada PR.
 
 ## Documentación técnica
 
