@@ -25,10 +25,10 @@ class RouterViewSet(viewsets.ModelViewSet):
     @extend_schema(summary="Verificar conexión del router", tags=['Routers MikroTik'])
     @action(detail=True, methods=['post'], url_path='verificar-conexion')
     def verificar_conexion(self, request, pk=None):
-        router = self.get_object()           
+        router = self.get_object()
         resultado = MikroTikBaseService(router).verificar_conexion()
         return Response(resultado, status=status.HTTP_200_OK)
-         
+
     @extend_schema(summary="Sincronizar este router", tags=['Routers MikroTik'])
     @action(detail=True, methods=['post'], url_path='sincronizar')
     def sincronizar(self, request, pk=None):
@@ -72,3 +72,30 @@ class RouterViewSet(viewsets.ModelViewSet):
         router = self.get_object()
         leases = NetworkClientService(router).listar_dhcp_leases()
         return Response({'router': router.nombre, 'total': len(leases), 'leases': leases})
+
+    @extend_schema(summary="Listar direcciones IP del router para el local-address", tags=['Routers MikroTik'])
+    @action(detail=True, methods=['get'], url_path='direcciones-ip')
+    def direcciones_ip(self, request, pk=None):
+        """Desplegable de local-address al crear o editar un plan.
+
+        Devuelve las direcciones de /ip/address de este router con su
+        interfaz. La web muestra interfaz + IP (por ejemplo el loopback),
+        pero guarda solo la IP en PlanVelocidad.direccion_local, que es lo
+        que pide el campo local-address del perfil PPPoE.
+        """
+        router = self.get_object()
+        direcciones = PPPoEService(router).listar_direcciones_ip()
+        return Response({'router': router.nombre, 'total': len(direcciones), 'direcciones': direcciones})
+
+    @extend_schema(summary="Listar pools del router para el remote-address", tags=['Routers MikroTik'])
+    @action(detail=True, methods=['get'], url_path='pools')
+    def pools(self, request, pk=None):
+        """Desplegable de remote-address al crear o editar un plan.
+
+        Devuelve los pools de /ip/pool de este router con su nombre y sus
+        rangos. La web guarda el nombre del pool elegido en
+        PlanVelocidad.pool_remoto.
+        """
+        router = self.get_object()
+        pools = PPPoEService(router).listar_pools()
+        return Response({'router': router.nombre, 'total': len(pools), 'pools': pools})

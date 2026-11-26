@@ -29,21 +29,23 @@ class PlanVelocidadViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         with transaction.atomic():
             plan = serializer.save()
             pppoe_service = PPPoEService(plan.router)
             traffic_service = TrafficService(plan.router)
-            
+
             if not plan.cola_padre:
                 plan.cola_padre = f"Plan-{plan.nombre_perfil}"
                 plan.save(update_fields=['cola_padre'])
-                
+
             resultado = pppoe_service.crear_perfil_velocidad(
                 nombre_perfil=plan.nombre_perfil,
                 subida=f"{plan.subida_mbps}M",
                 bajada=f"{plan.bajada_mbps}M",
                 cola_padre=plan.cola_padre,
+                direccion_local=plan.direccion_local,
+                pool_remoto=plan.pool_remoto,
             )
             resultado_cola = traffic_service.asegurar_cola_padre(
                 plan.cola_padre, plan.subida_mbps, plan.bajada_mbps
@@ -70,18 +72,25 @@ class PlanVelocidadViewSet(viewsets.ModelViewSet):
             if not plan.cola_padre:
                 plan.cola_padre = f"Plan-{plan.nombre_perfil}"
                 plan.save(update_fields=['cola_padre'])
-                
+
             pppoe_service = PPPoEService(plan.router)
             traffic_service = TrafficService(plan.router)
-            
-            perfil = pppoe_service.crear_perfil_velocidad(plan.nombre_perfil, f"{plan.subida_mbps}M", f"{plan.bajada_mbps}M", plan.cola_padre)
+
+            perfil = pppoe_service.crear_perfil_velocidad(
+                nombre_perfil=plan.nombre_perfil,
+                subida=f"{plan.subida_mbps}M",
+                bajada=f"{plan.bajada_mbps}M",
+                cola_padre=plan.cola_padre,
+                direccion_local=plan.direccion_local,
+                pool_remoto=plan.pool_remoto,
+            )
             cola = traffic_service.asegurar_cola_padre(plan.cola_padre, plan.subida_mbps, plan.bajada_mbps)
-            
+
             if perfil.get('status') == 'error':
                 raise serializers.ValidationError({"mikrotik_error": perfil.get('message')})
             if cola.get('status') == 'error':
                 raise serializers.ValidationError({"mikrotik_error": cola.get('message')})
-                
+
         return Response({"plan": PlanVelocidadSerializer(plan).data, "mikrotik_status": perfil, "cola_padre_status": cola})
 
 
@@ -106,19 +115,19 @@ class ClienteRedViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         cliente = serializer.save()
-        
+
         servicio = NetworkClientService(cliente.router)
         reserva = servicio.sincronizar_reserva_cliente_red(cliente)
         if reserva.get('status') == 'error':
             cliente.delete()
             return Response({"mikrotik_error": reserva.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
-            
+
         cola = servicio.sincronizar_cola_cliente_red(cliente)
         if cola.get('status') == 'error':
             servicio.eliminar_reserva_cliente_red(cliente)
             cliente.delete()
             return Response({"mikrotik_error": cola.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
-            
+
         return Response({
             "cliente": ClienteRedSerializer(cliente).data,
             "reserva_status": reserva,
@@ -130,16 +139,16 @@ class ClienteRedViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(cliente, data=request.data, partial=kwargs.get('partial', False))
         serializer.is_valid(raise_exception=True)
         cliente = serializer.save()
-        
+
         servicio = NetworkClientService(cliente.router)
         reserva = servicio.sincronizar_reserva_cliente_red(cliente)
         if reserva.get('status') == 'error':
             return Response({"mikrotik_error": reserva.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
-            
+
         cola = servicio.sincronizar_cola_cliente_red(cliente)
         if cola.get('status') == 'error':
             return Response({"mikrotik_error": cola.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
-            
+
         return Response({
             "cliente": ClienteRedSerializer(cliente).data,
             "reserva_status": reserva,
@@ -149,15 +158,15 @@ class ClienteRedViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         cliente = self.get_object()
         servicio = NetworkClientService(cliente.router)
-        
+
         cola = servicio.eliminar_cola_cliente_red(cliente)
         if cola.get('status') == 'error':
             return Response({"mikrotik_error": cola.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
-            
+
         reserva = servicio.eliminar_reserva_cliente_red(cliente)
         if reserva.get('status') == 'error':
             return Response({"mikrotik_error": reserva.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
-            
+
         cliente.delete()
         return Response({"message": "Cliente, reserva y cola eliminados", "cola_status": cola, "reserva_status": reserva})
 

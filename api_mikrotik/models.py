@@ -48,6 +48,22 @@ class PlanVelocidad(models.Model):
     cola_padre = models.CharField(max_length=100, blank=True, help_text="Nombre de la cola padre en MikroTik")
     subida_mbps = models.IntegerField(help_text="Velocidad de subida en Mbps")
     bajada_mbps = models.IntegerField(help_text="Velocidad de bajada en Mbps")
+    # Dirección local del perfil PPPoE (local-address): la IP del loopback
+    # de ESTE router. Es distinta en cada router, por eso se guarda por plan
+    # (cada plan pertenece a un router). Opcional: si se deja vacía, la API
+    # no toca el local-address del perfil que ya existe en el router.
+    direccion_local = models.GenericIPAddressField(
+        blank=True, null=True,
+        help_text="IP local del perfil PPPoE (local-address): la dirección IP del loopback de este router. Es distinta en cada router.",
+    )
+    # Pool de direcciones del perfil PPPoE (remote-address): el nombre del
+    # pool del que salen las IPs de los clientes, por ejemplo pool-pppoe.
+    # Opcional: si se deja vacío, la API no toca el remote-address del
+    # perfil que ya existe en el router.
+    pool_remoto = models.CharField(
+        max_length=100, blank=True,
+        help_text="Nombre del pool de direcciones del perfil PPPoE (remote-address), por ejemplo pool-pppoe.",
+    )
 
     class Meta:
         unique_together = ('router', 'nombre_perfil')
@@ -61,7 +77,7 @@ class ClientePPPoE(models.Model):
         ('activo', 'Activo'),
         ('suspendido', 'Suspendido'),
     )
-    
+
     router = models.ForeignKey(Router, on_delete=models.PROTECT)
     plan = models.ForeignKey(PlanVelocidad, on_delete=models.PROTECT)
     usuario_pppoe = models.CharField(max_length=100, unique=True, help_text="User para el secret")

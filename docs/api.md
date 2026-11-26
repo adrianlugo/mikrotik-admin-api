@@ -40,6 +40,8 @@ Roles disponibles:
 | `POST` | `/api/routers/{id}/sincronizar/` | Sincroniza PPPoE y planes de ese router con Django. |
 | `GET` | `/api/routers/{id}/consumo/` | Consulta colas simples y contadores. |
 | `GET` | `/api/routers/{id}/dhcp-leases/` | Lista leases DHCP dinámicos y estáticos. |
+| `GET` | `/api/routers/{id}/direcciones-ip/` | Lista direcciones IP del router (interfaz + IP) para elegir el local-address del perfil. |
+| `GET` | `/api/routers/{id}/pools/` | Lista pools del router (nombre + rangos) para elegir el remote-address del perfil. |
 | `POST` | `/api/routers/{id}/reparar-colas/` | Repara las colas de clientes DHCP/IP fija. |
 
 ## Planes
@@ -51,6 +53,16 @@ Roles disponibles:
 | `GET` | `/api/planes/{id}/` | Consulta un plan. |
 | `PUT/PATCH` | `/api/planes/{id}/` | Actualiza el plan y RouterOS. |
 | `DELETE` | `/api/planes/{id}/` | Elimina el plan si no tiene clientes asociados. |
+
+Cada plan puede llevar `direccion_local` (IP del loopback de ese router, por
+ejemplo `10.1.1.1`) y `pool_remoto` (nombre del pool, por ejemplo
+`pool-pppoe`). Son opcionales: si están definidos, la API los envía como
+`local-address` y `remote-address` al crear o actualizar el `/ppp/profile`;
+si están vacíos, no toca esos campos del perfil que ya existe en el router.
+La dirección local es distinta en cada router, por eso se guarda por plan (y
+cada plan pertenece a un solo router). Los desplegables se alimentan de
+`GET /api/routers/{id}/direcciones-ip/` y `GET /api/routers/{id}/pools/`: el
+de direcciones muestra interfaz + IP, pero guarda solo la IP.
 
 ## Clientes PPPoE
 
