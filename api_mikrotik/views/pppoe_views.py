@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import transaction
 from rest_framework import viewsets, status, serializers
 from rest_framework.response import Response
@@ -7,10 +9,11 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter
 from drf_spectacular.utils import extend_schema, inline_serializer, extend_schema_view
 
+from api_mikrotik.exceptions import MikroTikConnectionError
 from api_mikrotik.models import ClientePPPoE, Router
 from api_mikrotik.serializers import ClientePPPoESerializer
 from api_mikrotik.services import MikroTikBaseService, PPPoEService
-from api_mikrotik.permissions import PermisoOperativo
+from api_mikrotik.permissions import PermisoOperativo, obtener_rol
 
 
 @extend_schema_view(
@@ -76,21 +79,63 @@ class ClientePPPoEViewSet(viewsets.ModelViewSet):
         errores = []
         router_ids = ClientePPPoE.objects.values_list('router_id', flat=True)
         for router in Router.objects.filter(pk__in=router_ids).distinct():
-            resultado = PPPoEService(router).obtener_conexiones_activas()
             routers_consultados.append(router.nombre)
+            try:
+                resultado = PPPoEService(router).obtener_conexiones_activas()
+            except MikroTikConnectionError as exc:
+                # Antes el fallo se tragaba y la API devolvía 200 con 0
+                # conectados, como si nadie estuviera conectado.
+                errores.append({"router": router.nombre, "mensaje": str(exc)})
+                continue
             if isinstance(resultado, list):
                 usuarios_activos.extend(resultado)
             else:
-                errores.append({"router": router.nombre, "mensaje": resultado.get("message", "No fue posible consultar las sesiones")})
+                errores.append({"router": router.nombre, "mensaje": "No fue posible consultar las sesiones"})
 
         if not routers_consultados:
             return Response({"error": "No hay clientes PPPoE asociados a routers registrados"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if errores and not usuarios_activos and len(errores) == len(routers_consultados):
+            # Ningún router respondió: no es «0 conectados», es un error.
+            return Response({
+                "routers": routers_consultados,
+                "total_conectados": 0,
+                "conexiones": [],
+                "errores": errores,
+                "error": "Ningún router respondió a la consulta de sesiones activas.",
+            }, status=status.HTTP_502_BAD_GATEWAY)
 
         return Response({
             "routers": routers_consultados,
             "total_conectados": len(usuarios_activos),
             "conexiones": usuarios_activos,
             "errores": errores
+        }, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary="Rotar el token del portal del cliente",
+        description=(
+            "Genera un portal_token nuevo para el cliente e invalida el "
+            "anterior: el enlace viejo del portal deja de funcionar. Solo "
+            "para administradores. El token nuevo se devuelve una sola vez "
+            "en la respuesta: guárdalo o compártelo por un canal controlado."
+        ),
+        tags=['Clientes PPPoE'],
+    )
+    @action(detail=True, methods=['post'], url_path='rotar-portal-token')
+    def rotar_portal_token(self, request, pk=None):
+        if obtener_rol(request.user) != 'administrador':
+            return Response(
+                {"error": "Solo un administrador puede rotar el token del portal."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        cliente = self.get_object()
+        cliente.portal_token = uuid.uuid4()
+        cliente.save(update_fields=['portal_token'])
+        return Response({
+            "cliente": cliente.usuario_pppoe,
+            "portal_token": str(cliente.portal_token),
+            "mensaje": "Token del portal rotado. El enlace anterior ya no funciona.",
         }, status=status.HTTP_200_OK)
 
     def create(self, request, *args, **kwargs):
