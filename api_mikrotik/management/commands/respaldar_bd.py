@@ -39,6 +39,11 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        conservar = options['conservar']
+        if conservar is None or conservar < 1:
+            # 0 o negativo borraría TODAS las copias (o ninguna, según el
+            # código viejo): se rechaza con un error claro.
+            raise CommandError('--conservar debe ser mayor que 0 (por ejemplo, 7).')
         base_datos = settings.DATABASES['default']
         if base_datos['ENGINE'] != 'django.db.backends.sqlite3':
             raise CommandError(
@@ -47,7 +52,8 @@ class Command(BaseCommand):
             )
         origen = Path(base_datos['NAME'])
         if not origen.exists():
-            raise CommandError(f'No existe la base de datos: {origen}')
+            # Sin la ruta interna: es un dato del servidor, no del usuario.
+            raise CommandError('No existe la base de datos configurada.')
         destino = Path(options['destino'])
         destino.mkdir(parents=True, exist_ok=True)
         marca = datetime.now().strftime('%Y%m%d-%H%M%S')
@@ -55,6 +61,6 @@ class Command(BaseCommand):
         shutil.copy2(origen, copia)
         # Limpieza: se quedan solo las copias más recientes.
         copias = sorted(destino.glob(f"{origen.stem}-*{origen.suffix}"))
-        for vieja in copias[: -options['conservar']] if options['conservar'] > 0 else copias:
+        for vieja in copias[:-conservar]:
             vieja.unlink()
         self.stdout.write(self.style.SUCCESS(f'Respaldo guardado en {copia}'))

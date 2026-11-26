@@ -1,6 +1,6 @@
 import logging
 from .base import MikroTikBaseService
-from api_mikrotik.exceptions import MikroTikConnectionError
+from api_mikrotik.exceptions import MikroTikConnectionError, MikroTikError
 
 logger = logging.getLogger(__name__)
 
@@ -18,12 +18,12 @@ class TrafficService(MikroTikBaseService):
         try:
             api = self._obtener_conexion_real()
             return api.get_resource('/queue/simple').get()
-        except MikroTikConnectionError:
+        except MikroTikError:
             raise
         except Exception as e:
             logger.exception("No se pudieron consultar las colas simples")
             raise MikroTikConnectionError(
-                f"No se pudieron consultar las colas del router {self.router.nombre}: {e}"
+                f"No se pudieron consultar las colas del router {self.router.nombre}."
             ) from e
 
     def asegurar_cola_padre(self, nombre, velocidad_subida, velocidad_bajada):
@@ -74,9 +74,11 @@ class TrafficService(MikroTikBaseService):
                 "name": nombre,
                 "creada": True,
             }
+        except MikroTikError:
+            raise
         except Exception as e:
             logger.exception("No se pudo sincronizar la cola padre")
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": "No se pudo sincronizar la cola padre en el router."}
 
     def listar_colas_resumen(self):
         """Colas simples resumidas para el desplegable de cola padre.

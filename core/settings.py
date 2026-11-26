@@ -236,6 +236,15 @@ MIKROTIK_SSL_VERIFY = os.environ.get('MIKROTIK_SSL_VERIFY', 'true').strip().lowe
 MIKROTIK_SSL_VERIFY_HOSTNAME = os.environ.get('MIKROTIK_SSL_VERIFY_HOSTNAME', 'true').strip().lower() in ('1', 'true', 'yes', 'on')
 MIKROTIK_ALLOW_INSECURE_API = os.environ.get('MIKROTIK_ALLOW_INSECURE_API', 'false').strip().lower() in ('1', 'true', 'yes', 'on')
 
+# Tiempo máximo de espera (en segundos) para que un router responda a la
+# API RouterOS. Si se agota, la API devuelve 503 con un mensaje en español
+# («El router no responde a tiempo...») en vez de quedarse esperando.
+# RouterOS-api 0.21.0 no acepta timeout en el constructor de
+# RouterOsApiPool, pero sí expone ``set_timeout()`` (que ajusta su
+# atributo ``socket_timeout``, 15 s por defecto) y hay que llamarlo
+# ANTES de ``get_api()`` (ver api_mikrotik/services/base.py).
+MIKROTIK_TIMEOUT_SEGUNDOS = int(os.environ.get('MIKROTIK_TIMEOUT_SEGUNDOS', '10') or 10)
+
 REST_FRAMEWORK = {
     'EXCEPTION_HANDLER': 'api_mikrotik.exceptions.custom_exception_handler',
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',

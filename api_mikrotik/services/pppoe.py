@@ -1,7 +1,7 @@
 import logging
 from django.db import transaction
 from .base import MikroTikBaseService
-from ..exceptions import MikroTikConnectionError
+from ..exceptions import MikroTikConnectionError, MikroTikError
 from ..utils import convertir_rate_limit_a_mbps
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class PPPoEService(MikroTikBaseService):
 
     def crear_usuario_pppoe(self, usuario, password, plan_perfil):
         if self.simulado:
-            return self._simular_operacion(f"/ppp/secret/add name={usuario} password={password} profile={plan_perfil}")
+            return self._simular_operacion(f"/ppp/secret/add name={usuario} password=*** profile={plan_perfil}")
 
         from routeros_api.exceptions import RouterOsApiError
         try:
@@ -40,9 +40,11 @@ class PPPoEService(MikroTikBaseService):
             list_ppp = api.get_resource('/ppp/secret')
             list_ppp.add(name=usuario, password=password, profile=plan_perfil, service="pppoe")
             return {"status": "success", "message": "Usuario creado en MikroTik real"}
+        except MikroTikError:
+            raise
         except RouterOsApiError as e:
             logger.error(f"Error de RouterOS al crear usuario: {e}")
-            return {"status": "error", "message": f"Error del Router: {e}"}
+            return {"status": "error", "message": "El router rechazó la operación."}
         except Exception as e:
             logger.error(f"Error crítico de conexión: {e}")
             return {"status": "error", "message": "No se pudo establecer comunicación con el router MikroTik."}
@@ -62,12 +64,12 @@ class PPPoEService(MikroTikBaseService):
             active_ppp = api.get_resource('/ppp/active')
             datos = active_ppp.get()
             return [conexion.get('name') for conexion in datos if conexion.get('name')]
-        except MikroTikConnectionError:
+        except MikroTikError:
             raise
         except Exception as e:
             logger.error(f"Error leyendo usuarios activos: {e}")
             raise MikroTikConnectionError(
-                f"No se pudieron consultar las sesiones activas del router {self.router.nombre}: {e}"
+                f"No se pudieron consultar las sesiones activas del router {self.router.nombre}."
             ) from e
 
     def actualizar_usuario_pppoe(self, usuario_antiguo, nuevo_usuario, nuevo_password, nuevo_plan_perfil):
@@ -86,9 +88,11 @@ class PPPoEService(MikroTikBaseService):
             list_ppp.set(id=self._obtener_id_router(user_record[0]), name=nuevo_usuario, password=nuevo_password, profile=nuevo_plan_perfil)
             self._desconectar_sesion_activa_interna(api, usuario_antiguo)
             return {"status": "success", "message": "Usuario modificado en MikroTik real"}
+        except MikroTikError:
+            raise
         except RouterOsApiError as e:
             logger.error(f"Error de RouterOS al actualizar: {e}")
-            return {"status": "error", "message": f"Error del Router: {e}"}
+            return {"status": "error", "message": "El router rechazó la operación."}
         except Exception as e:
             logger.error(f"Error crítico en actualización: {e}")
             return {"status": "error", "message": "Error de conexión con el router MikroTik."}
@@ -109,9 +113,11 @@ class PPPoEService(MikroTikBaseService):
                 return {"status": "success", "message": "Usuario eliminado en MikroTik real"}
 
             return {"status": "error", "message": f"Usuario {usuario_pppoe} no encontrado para eliminar"}
+        except MikroTikError:
+            raise
         except RouterOsApiError as e:
             logger.error(f"Error de RouterOS al eliminar: {e}")
-            return {"status": "error", "message": f"Error del Router: {e}"}
+            return {"status": "error", "message": "El router rechazó la operación."}
         except Exception as e:
             logger.error(f"Error de red eliminando usuario: {e}")
             return {"status": "error", "message": "Error de comunicación con el router MikroTik."}
@@ -127,8 +133,11 @@ class PPPoEService(MikroTikBaseService):
             # activo. Se falla con un mensaje claro antes de tocar nada.
             try:
                 perfil_existe = self.existe_perfil(perfil_corte)
-            except Exception as exc:
-                return {"status": "error", "message": f"No se pudo comprobar si existe el perfil '{perfil_corte}': {exc}"}
+            except MikroTikError:
+                raise
+            except Exception:
+                logger.exception("No se pudo comprobar si existe el perfil de corte")
+                return {"status": "error", "message": f"No se pudo comprobar si existe el perfil '{perfil_corte}' en el router."}
             if not perfil_existe:
                 return {
                     "status": "error",
@@ -149,9 +158,11 @@ class PPPoEService(MikroTikBaseService):
             list_ppp.set(id=self._obtener_id_router(user_record[0]), profile=perfil_corte)
             self._desconectar_sesion_activa_interna(api, usuario_pppoe)
             return {"status": "success", "message": "Usuario suspendido en MikroTik real"}
+        except MikroTikError:
+            raise
         except RouterOsApiError as e:
             logger.error(f"Error de RouterOS al suspender: {e}")
-            return {"status": "error", "message": f"Error del Router: {e}"}
+            return {"status": "error", "message": "El router rechazó la operación."}
         except Exception as e:
             logger.error(f"Error al suspender: {e}")
             return {"status": "error", "message": "Error de comunicación con el router MikroTik."}
@@ -170,9 +181,11 @@ class PPPoEService(MikroTikBaseService):
             if not removidas:
                 return {"status": "success", "message": "El usuario no tiene una sesión activa", "sesiones": 0}
             return {"status": "success", "message": "Sesión activa desconectada", "sesiones": removidas}
+        except MikroTikError:
+            raise
         except Exception as exc:
             logger.error("Error pateando usuario PPPoE: %s", exc)
-            return {"status": "error", "message": str(exc)}
+            return {"status": "error", "message": "No se pudo desconectar la sesión en el router."}
 
     def _desconectar_sesion_activa_interna(self, api_instancia, usuario_pppoe):
         try:
@@ -222,9 +235,11 @@ class PPPoEService(MikroTikBaseService):
             else:
                 resource.add(name=nombre_perfil, **parametros)
             return {"status": "success", "message": "Perfil sincronizado en MikroTik"}
+        except MikroTikError:
+            raise
         except Exception as e:
             logger.error(f"Error creando perfil en MikroTik: {e}")
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": "No se pudo sincronizar el perfil en el router."}
 
     def listar_direcciones_ip(self):
         """Direcciones IP del router (/ip/address) para elegir el local-address.
@@ -253,12 +268,12 @@ class PPPoEService(MikroTikBaseService):
                     'deshabilitada': fila.get('disabled', 'false'),
                 })
             return resultado
-        except MikroTikConnectionError:
+        except MikroTikError:
             raise
         except Exception as e:
             logger.exception("No se pudieron consultar las direcciones IP del router")
             raise MikroTikConnectionError(
-                f"No se pudieron consultar las direcciones IP del router {self.router.nombre}: {e}"
+                f"No se pudieron consultar las direcciones IP del router {self.router.nombre}."
             ) from e
 
     def listar_pools(self):
@@ -277,12 +292,12 @@ class PPPoEService(MikroTikBaseService):
                 {'nombre': fila.get('name'), 'rangos': fila.get('ranges')}
                 for fila in filas if fila.get('name')
             ]
-        except MikroTikConnectionError:
+        except MikroTikError:
             raise
         except Exception as e:
             logger.exception("No se pudieron consultar los pools del router")
             raise MikroTikConnectionError(
-                f"No se pudieron consultar los pools del router {self.router.nombre}: {e}"
+                f"No se pudieron consultar los pools del router {self.router.nombre}."
             ) from e
 
     def sincronizar_bidireccional(self):
@@ -441,9 +456,11 @@ class PPPoEService(MikroTikBaseService):
                     "advertencias": advertencias,
                 },
             }
+        except MikroTikError:
+            raise
         except Exception as e:
             logger.exception("Fallo en la sincronización bi-direccional")
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": "No se pudo completar la sincronización con el router."}
 
     def importar_secretos_hacia_django(self):
         return self.sincronizar_bidireccional()

@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
@@ -10,14 +12,20 @@ from api_mikrotik.services import MikroTikBaseService, PPPoEService, NetworkClie
 from api_mikrotik.permissions import PermisoOperativo
 
 
+logger = logging.getLogger(__name__)
+
+
 def _error_router_502(exc):
     """Respuesta 502 honesta cuando el router no responde.
 
     Antes varios endpoints devolvían 200 con listas vacías o con 0, como si
     el router no tuviera datos. Ahora un fallo de comunicación es un error.
+    El formato es el único de la API ({error, codigo}); el detalle técnico
+    queda solo en el registro, nunca en la respuesta.
     """
+    logger.warning("El router no respondió: %s", exc)
     return Response(
-        {"error": "No se pudo comunicar con el router.", "detalle": str(exc)},
+        {"error": "No se pudo comunicar con el router.", "codigo": "mikrotik_error"},
         status=status.HTTP_502_BAD_GATEWAY,
     )
 
@@ -82,7 +90,9 @@ class RouterViewSet(viewsets.ModelViewSet):
     def reparar_colas(self, request, pk=None):
         router = self.get_object()
         resultado = NetworkClientService(router).reparar_usuarios_red()
-        code = status.HTTP_200_OK if resultado.get('status') == 'success' else status.HTTP_502_BAD_GATEWAY
+        # status=error (fallaron todas) -> 502; partial (falló alguna)
+        # -> 200 con la lista de fallos en "errores", para reintentarlo.
+        code = status.HTTP_502_BAD_GATEWAY if resultado.get('status') == 'error' else status.HTTP_200_OK
         return Response(resultado, status=code)
 
     @extend_schema(summary="Listar leases DHCP", tags=['Monitoreo MikroTik'])

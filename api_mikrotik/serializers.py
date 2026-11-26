@@ -11,6 +11,16 @@ class RouterSerializer(serializers.ModelSerializer):
         model = Router
         fields = ('id', 'nombre', 'ip_address', 'puerto_api', 'usuario', 'password', 'activo', 'creado_en')
 
+    def validate_puerto_api(self, value):
+        # La API RouterOS solo usa 8729 (API-SSL, recomendado) y 8728
+        # (sin cifrar, solo laboratorio). Cualquier otro puerto es un
+        # error de configuración, no un router distinto.
+        if value not in (8728, 8729):
+            raise serializers.ValidationError(
+                "El puerto de la API debe ser 8729 (API-SSL, recomendado) o 8728 (sin cifrar, solo laboratorio)."
+            )
+        return value
+
 class ClientePPPoESerializer(serializers.ModelSerializer):
     # Declaramos explícitamente los campos para poder aplicar estilos de lectura en las respuestas
     router_nombre = serializers.CharField(source='router.nombre', read_only=True)
@@ -91,6 +101,57 @@ class PlanVelocidadSerializer(serializers.ModelSerializer):
             },
         }
 
+    def validate_subida_mbps(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError("La velocidad de subida debe ser mayor que 0 Mbps.")
+        return value
+
+    def validate_bajada_mbps(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError("La velocidad de bajada debe ser mayor que 0 Mbps.")
+        return value
+
+    def validate_nombre_perfil(self, value):
+        nombre = (value or '').strip()
+        if not nombre:
+            raise serializers.ValidationError("El nombre del perfil no puede estar vacío.")
+        if not re.match(r'^[A-Za-z0-9._\- ]+$', nombre):
+            raise serializers.ValidationError(
+                "El nombre del perfil solo puede contener letras, números, espacios, puntos (.), guiones (-) y guiones bajos (_)."
+            )
+        # Los perfiles de sistema de RouterOS no son planes del ISP y la
+        # sincronización no los importa como planes (ver PERFILES_SISTEMA
+        # en services/pppoe.py): tampoco se pueden crear como plan aquí.
+        if nombre in ('default', 'default-encryption'):
+            raise serializers.ValidationError(
+                f"'{nombre}' es un perfil de sistema de RouterOS, no un plan del ISP."
+            )
+        return nombre
+
+    def validate_cola_padre(self, value):
+        nombre = (value or '').strip()
+        if nombre and not re.match(r'^[A-Za-z0-9._\- ]+$', nombre):
+            raise serializers.ValidationError(
+                "El nombre de la cola padre solo puede contener letras, números, espacios, puntos (.), guiones (-) y guiones bajos (_)."
+            )
+        return nombre
+
+    def validate_pool_remoto(self, value):
+        nombre = (value or '').strip()
+        if nombre and not re.match(r'^[A-Za-z0-9._\-]+$', nombre):
+            raise serializers.ValidationError(
+                "El nombre del pool solo puede contener letras, números, puntos (.), guiones (-) y guiones bajos (_)."
+            )
+        return nombre
+
+    # Nota: la existencia de cola_padre/pool_remoto en el router NO se
+    # valida aquí: haría falta una llamada en vivo al router en cada
+    # creación/edición de plan (y en modo simulación no hay router que
+    # consultar). Si el nombre no existe, la sincronización del plan
+    # falla con un 502 claro y el plan no se guarda (ver
+    # _sincronizar_plan_en_router). La web ya ofrece los desplegables
+    # de colas y pools del router para no escribir el nombre a mano.
+
 
 class FacturaSerializer(serializers.ModelSerializer):
     cliente_nombre = serializers.CharField(source='cliente.nombre_completo', read_only=True)
@@ -99,12 +160,31 @@ class FacturaSerializer(serializers.ModelSerializer):
         model = Factura
         fields = '__all__'
 
+    def validate_monto(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError("El monto de la factura debe ser mayor que 0.")
+        return value
+
+    def validate(self, data):
+        periodo = data.get('periodo') or getattr(self.instance, 'periodo', None)
+        vencimiento = data.get('fecha_vencimiento') or getattr(self.instance, 'fecha_vencimiento', None)
+        if periodo and vencimiento and vencimiento < periodo:
+            raise serializers.ValidationError({
+                "fecha_vencimiento": "La fecha de vencimiento no puede ser anterior al periodo facturado."
+            })
+        return data
+
 
 class PagoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Pago
         fields = '__all__'
         read_only_fields = ('registrado_por',)
+
+    def validate_monto(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError("El monto del pago debe ser mayor que 0.")
+        return value
 
 
 class ClienteRedSerializer(serializers.ModelSerializer):
@@ -121,13 +201,13 @@ class ClienteRedSerializer(serializers.ModelSerializer):
         tipo = data.get('tipo') or getattr(self.instance, 'tipo', None)
         if router and plan and plan.router_id != router.id:
             raise serializers.ValidationError({"plan": "El plan seleccionado pertenece a otro router."})
-        direccion_mac = data.get('direccion_mac', getattr(self.instance, 'direccion_mac', '')).strip()
+        direccion_mac = (data.get('direccion_mac', getattr(self.instance, 'direccion_mac', None)) or '').strip()
         if tipo == 'dhcp' and not direccion_mac:
             raise serializers.ValidationError({"direccion_mac": "Los clientes DHCP necesitan una MAC para crear el lease estático."})
         if not direccion_mac:
             raise serializers.ValidationError({"direccion_mac": "Las IP fijas necesitan una MAC para crear la reserva ARP."})
         if direccion_mac:
-            mac = data.get('direccion_mac', self.instance.direccion_mac if self.instance else '')
+            mac = direccion_mac
             partes = mac.lower().split(':')
             if len(partes) != 6 or any(len(p) != 2 or not all(c in '0123456789abcdef' for c in p) for p in partes):
                 raise serializers.ValidationError({"direccion_mac": "Formato MAC inválido. Use XX:XX:XX:XX:XX:XX."})
