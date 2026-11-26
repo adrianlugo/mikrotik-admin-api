@@ -1,11 +1,12 @@
 from django.db import transaction
-from rest_framework import viewsets, status, serializers
+from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter
 from drf_spectacular.utils import extend_schema, extend_schema_view
 
+from api_mikrotik.exceptions import MikroTikConnectionError
 from api_mikrotik.models import ClienteRed, PlanVelocidad
 from api_mikrotik.serializers import ClienteRedSerializer, PlanVelocidadSerializer
 from api_mikrotik.services import PPPoEService, NetworkClientService, TrafficService
@@ -30,7 +31,9 @@ def _sincronizar_plan_en_router(plan, crear_cola_padre_explicito, es_actualizaci
 
     Orden seguro: primero el perfil y solo después la cola padre, para no
     tocar la cola si crear el perfil falla. Si el perfil falla, se lanza
-    ValidationError y la transacción que llamó revierte el plan en Django.
+    MikroTikConnectionError y la transacción que llamó revierte el plan
+    en Django: un fallo del router es 502, nunca un error de validación
+    (400).
 
     Cola padre:
     - Con nombre: se sincroniza el perfil con esa cola y se asegura la cola
@@ -61,14 +64,18 @@ def _sincronizar_plan_en_router(plan, crear_cola_padre_explicito, es_actualizaci
         pool_remoto=plan.pool_remoto,
     )
     if resultado.get("status") == "error":
-        raise serializers.ValidationError({"mikrotik_error": resultado.get("message")})
+        raise MikroTikConnectionError(
+            resultado.get("message") or "No se pudo sincronizar el perfil en el router."
+        )
 
     if plan.cola_padre:
         resultado_cola = traffic_service.asegurar_cola_padre(
             plan.cola_padre, plan.subida_mbps, plan.bajada_mbps
         )
         if resultado_cola.get("status") == "error":
-            raise serializers.ValidationError({"mikrotik_error": resultado_cola.get("message")})
+            raise MikroTikConnectionError(
+                resultado_cola.get("message") or "No se pudo asegurar la cola padre en el router."
+            )
     else:
         resultado_cola = {
             "status": "none",
@@ -148,19 +155,28 @@ class ClienteRedViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        cliente = serializer.save()
+        # Atómico: si la reserva o la cola fallan en el router, el
+        # cliente NO queda guardado en Django. El fallo del router se
+        # lanza como MikroTikConnectionError (502 con el formato único)
+        # y la transacción revierte; si el servicio lanza cualquier otra
+        # excepción, el manejador global la convierte en error y la
+        # transacción también revierte. Antes se borraba el cliente a
+        # mano tras el fallo, lo que dejaba hueco a borrados parciales.
+        with transaction.atomic():
+            cliente = serializer.save()
 
-        servicio = NetworkClientService(cliente.router)
-        reserva = servicio.sincronizar_reserva_cliente_red(cliente)
-        if reserva.get('status') == 'error':
-            cliente.delete()
-            return Response({"mikrotik_error": reserva.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
+            servicio = NetworkClientService(cliente.router)
+            reserva = servicio.sincronizar_reserva_cliente_red(cliente)
+            if reserva.get('status') == 'error':
+                raise MikroTikConnectionError(
+                    reserva.get('message') or "No se pudo crear la reserva en el router."
+                )
 
-        cola = servicio.sincronizar_cola_cliente_red(cliente)
-        if cola.get('status') == 'error':
-            servicio.eliminar_reserva_cliente_red(cliente)
-            cliente.delete()
-            return Response({"mikrotik_error": cola.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
+            cola = servicio.sincronizar_cola_cliente_red(cliente)
+            if cola.get('status') == 'error':
+                raise MikroTikConnectionError(
+                    cola.get('message') or "No se pudo crear la cola en el router."
+                )
 
         return Response({
             "cliente": ClienteRedSerializer(cliente).data,
@@ -181,13 +197,15 @@ class ClienteRedViewSet(viewsets.ModelViewSet):
             servicio = NetworkClientService(cliente.router)
             reserva = servicio.sincronizar_reserva_cliente_red(cliente)
             if reserva.get('status') == 'error':
-                transaction.set_rollback(True)
-                return Response({"mikrotik_error": reserva.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
+                raise MikroTikConnectionError(
+                    reserva.get('message') or "No se pudo actualizar la reserva en el router."
+                )
 
             cola = servicio.sincronizar_cola_cliente_red(cliente)
             if cola.get('status') == 'error':
-                transaction.set_rollback(True)
-                return Response({"mikrotik_error": cola.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
+                raise MikroTikConnectionError(
+                    cola.get('message') or "No se pudo actualizar la cola en el router."
+                )
 
         return Response({
             "cliente": ClienteRedSerializer(cliente).data,
@@ -196,16 +214,34 @@ class ClienteRedViewSet(viewsets.ModelViewSet):
         })
 
     def destroy(self, request, *args, **kwargs):
+        """Borra el cliente de red del router y de Django.
+
+        Orden elegido, de fuera hacia dentro: primero la cola simple y
+        luego la reserva DHCP/ARP, y el registro local solo al final.
+        Si borrar la cola falla, no se ha tocado nada y se puede
+        reintentar el borrado entero. Si borrar la reserva falla
+        después de borrar la cola, el cliente sigue en Django (con la
+        reserva aún en el router) y el borrado se puede reintentar:
+        eliminar la cola de un cliente que ya no la tiene es
+        idempotente (devuelve success si no la encuentra), así que el
+        segundo intento no se atasca en la cola. No hay forma de hacer
+        el borrado en el router y en Django en una sola transacción,
+        así que este orden es el que deja el menor resto posible.
+        """
         cliente = self.get_object()
         servicio = NetworkClientService(cliente.router)
 
         cola = servicio.eliminar_cola_cliente_red(cliente)
         if cola.get('status') == 'error':
-            return Response({"mikrotik_error": cola.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
+            raise MikroTikConnectionError(
+                cola.get('message') or "No se pudo eliminar la cola del router."
+            )
 
         reserva = servicio.eliminar_reserva_cliente_red(cliente)
         if reserva.get('status') == 'error':
-            return Response({"mikrotik_error": reserva.get('message')}, status=status.HTTP_502_BAD_GATEWAY)
+            raise MikroTikConnectionError(
+                reserva.get('message') or "No se pudo eliminar la reserva del router."
+            )
 
         cliente.delete()
         return Response({"message": "Cliente, reserva y cola eliminados", "cola_status": cola, "reserva_status": reserva})
@@ -217,7 +253,12 @@ class ClienteRedViewSet(viewsets.ModelViewSet):
         servicio = NetworkClientService(cliente.router)
         reserva = servicio.sincronizar_reserva_cliente_red(cliente)
         if reserva.get('status') == 'error':
-            return Response(reserva, status=status.HTTP_502_BAD_GATEWAY)
+            raise MikroTikConnectionError(
+                reserva.get('message') or "No se pudo sincronizar la reserva en el router."
+            )
         cola = servicio.sincronizar_cola_cliente_red(cliente)
-        code = status.HTTP_200_OK if cola.get('status') == 'success' else status.HTTP_502_BAD_GATEWAY
-        return Response({'reserva_status': reserva, 'cola_status': cola}, status=code)
+        if cola.get('status') == 'error':
+            raise MikroTikConnectionError(
+                cola.get('message') or "No se pudo sincronizar la cola en el router."
+            )
+        return Response({'reserva_status': reserva, 'cola_status': cola}, status=status.HTTP_200_OK)
