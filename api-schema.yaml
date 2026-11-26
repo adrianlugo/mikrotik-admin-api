@@ -36,6 +36,18 @@ paths:
         description: A search term.
         schema:
           type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
       tags:
       - Clientes PPPoE
       security:
@@ -46,9 +58,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ClientePPPoE'
+                $ref: '#/components/schemas/PaginatedClientePPPoEList'
           description: ''
     post:
       operationId: clientes_pppoe_create
@@ -306,6 +316,39 @@ paths:
               schema:
                 $ref: '#/components/schemas/PingClienteResponse'
           description: ''
+  /api/clientes-pppoe/{id}/rotar-portal-token/:
+    post:
+      operationId: clientes_pppoe_rotar_portal_token_create
+      description: 'Genera un portal_token nuevo para el cliente e invalida el anterior:
+        el enlace viejo del portal deja de funcionar. Solo para administradores. El
+        token nuevo se devuelve una sola vez en la respuesta.'
+      summary: Rotar el token del portal del cliente
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this cliente pp po e.
+        required: true
+      tags:
+      - Clientes PPPoE
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cliente:
+                    type: string
+                  portal_token:
+                    type: string
+                  mensaje:
+                    type: string
+          description: ''
   /api/clientes-pppoe/activos/:
     get:
       operationId: clientes_pppoe_activos_retrieve
@@ -366,6 +409,18 @@ paths:
         description: |-
           * `dhcp` - DHCP
           * `ip_fija` - IP fija
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
       tags:
       - Clientes DHCP e IP fija
       security:
@@ -376,9 +431,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ClienteRed'
+                $ref: '#/components/schemas/PaginatedClienteRedList'
           description: ''
     post:
       operationId: clientes_red_create
@@ -574,6 +627,18 @@ paths:
         description: A search term.
         schema:
           type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
       tags:
       - Facturación
       security:
@@ -584,9 +649,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Factura'
+                $ref: '#/components/schemas/PaginatedFacturaList'
           description: ''
     post:
       operationId: facturas_create
@@ -743,6 +806,18 @@ paths:
         description: A search term.
         schema:
           type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
       tags:
       - Pagos
       security:
@@ -753,9 +828,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Pago'
+                $ref: '#/components/schemas/PaginatedPagoList'
           description: ''
     post:
       operationId: pagos_create
@@ -914,6 +987,18 @@ paths:
         description: A search term.
         schema:
           type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
       tags:
       - Planes de velocidad
       security:
@@ -924,14 +1009,14 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/PlanVelocidad'
+                $ref: '#/components/schemas/PaginatedPlanVelocidadList'
           description: ''
     post:
       operationId: planes_create
       description: Guarda el plan en Django y crea o actualiza el profile correspondiente
-        en su router MikroTik.
+        en su router MikroTik. Si cola_padre queda vacía, el plan queda sin cola
+        padre (none) y no se genera ninguna cola; para crear la cola Plan-{nombre_perfil}
+        hay que enviar crear_cola_padre=true (su límite será el del plan).
       summary: Crear un plan de velocidad
       tags:
       - Planes de velocidad
@@ -984,7 +1069,9 @@ paths:
     put:
       operationId: planes_update
       description: Reemplaza todos los datos editables del plan y lo mantiene alineado
-        con la configuración local.
+        con la configuración local. Si cola_padre queda vacía, el perfil queda sin
+        cola padre (parent-queue=none); para crear la cola Plan-{nombre_perfil} hay
+        que enviar crear_cola_padre=true.
       summary: Actualizar completamente un plan
       parameters:
       - in: path
@@ -1020,7 +1107,9 @@ paths:
     patch:
       operationId: planes_partial_update
       description: Modifica únicamente los campos enviados; por ejemplo, la velocidad
-        de subida o bajada.
+        de subida o bajada. Si cola_padre queda vacía, el perfil queda sin cola
+        padre (parent-queue=none); para crear la cola Plan-{nombre_perfil} hay que
+        enviar crear_cola_padre=true.
       summary: Actualizar parcialmente un plan
       parameters:
       - in: path
@@ -1106,6 +1195,18 @@ paths:
         description: A search term.
         schema:
           type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
       tags:
       - Routers MikroTik
       security:
@@ -1116,9 +1217,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Router'
+                $ref: '#/components/schemas/PaginatedRouterList'
           description: ''
     post:
       operationId: routers_create
@@ -1568,6 +1667,27 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthToken'
           description: ''
+  /api/token/revocar/:
+    post:
+      operationId: token_revocar_create
+      description: 'Elimina el token DRF del usuario autenticado y cierra su sesión.
+        Después de revocarlo hay que pedir uno nuevo con POST /api/token/. Antes no
+        había forma de cerrar sesión: el token seguía valiendo aunque se cerrara la
+        sesión en la web. La expiración automática sigue siendo opcional (DJANGO_TOKEN_EXPIRY_DAYS,
+        ver docs/security.md).'
+      summary: Revocar el token de acceso (cerrar sesión)
+      tags:
+      - Autenticación
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevocarTokenResponse'
+          description: ''
 components:
   schemas:
     AuthToken:
@@ -2006,7 +2126,7 @@ components:
           maxLength: 100
         cola_padre:
           type: string
-          description: Nombre de la cola padre en MikroTik
+          description: Nombre de una cola simple que ya existe en el router. Vacía = sin cola padre (none); la API no genera ninguna cola.
           maxLength: 100
         direccion_local:
           type: string
@@ -2058,6 +2178,144 @@ components:
           type: string
           format: date-time
           readOnly: true
+    PaginatedClientePPPoEList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientePPPoE'
+    PaginatedClienteRedList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClienteRed'
+    PaginatedFacturaList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Factura'
+    PaginatedPagoList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Pago'
+    PaginatedPlanVelocidadList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanVelocidad'
+    PaginatedRouterList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Router'
     PingClienteRequest:
       type: object
       properties:
@@ -2091,7 +2349,7 @@ components:
           maxLength: 100
         cola_padre:
           type: string
-          description: Nombre de la cola padre en MikroTik
+          description: Nombre de una cola simple que ya existe en el router. Vacía = sin cola padre (none); la API no genera ninguna cola.
           maxLength: 100
         direccion_local:
           type: string
@@ -2137,6 +2395,14 @@ components:
       - estado
       - mensaje
       - servicio
+    RevocarTokenResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+          readOnly: true
+      required:
+      - detail
     Router:
       type: object
       properties:
