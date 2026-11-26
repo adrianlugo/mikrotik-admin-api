@@ -1,8 +1,28 @@
 import logging
+import socket
 from django.conf import settings
 
-from api_mikrotik.exceptions import MikroTikConnectionError
+from api_mikrotik.exceptions import (
+    MikroTikConnectionError,
+    MikroTikTimeoutError,
+)
 
+
+def _es_timeout(exc):
+    """True si la excepción es (o envuelve) un tiempo de espera agotado.
+
+    RouterOS-api envuelve los errores de socket —incluido el
+    ``socket.timeout``— en ``RouterOsApiConnectionError``, así que además
+    del tipo se mira la cadena de causas y el mensaje («timed out»).
+    """
+    if isinstance(exc, (TimeoutError, socket.timeout)):
+        return True
+    causa = getattr(exc, '__cause__', None) or getattr(exc, '__context__', None)
+    while causa is not None:
+        if isinstance(causa, (TimeoutError, socket.timeout)):
+            return True
+        causa = getattr(causa, '__cause__', None) or getattr(causa, '__context__', None)
+    return 'timed out' in str(exc).lower()
 
 
 logger = logging.getLogger(__name__)
@@ -55,6 +75,13 @@ class MikroTikBaseService:
         get_password = getattr(self.router, 'get_password', None)
         router_password = get_password() if callable(get_password) else self.router.password
 
+        # Timeout: RouterOS-api 0.21.0 no acepta timeout en el constructor
+        # de RouterOsApiPool, pero expone set_timeout(), que ajusta su
+        # socket_timeout (15 s por defecto) y hay que llamarlo ANTES de
+        # get_api(). Ese timeout cubre tanto la conexión como las lecturas
+        # posteriores en ese socket. Configurable con
+        # MIKROTIK_TIMEOUT_SEGUNDOS (10 s por defecto).
+        timeout = int(getattr(settings, 'MIKROTIK_TIMEOUT_SEGUNDOS', 10) or 10)
         try:
             api_pool = routeros_api.RouterOsApiPool(
                 ip,
@@ -66,12 +93,34 @@ class MikroTikBaseService:
                 ssl_verify=getattr(settings, 'MIKROTIK_SSL_VERIFY', True),
                 ssl_verify_hostname=getattr(settings, 'MIKROTIK_SSL_VERIFY_HOSTNAME', True),
             )
+            # set_timeout() existe en la librería real; si un mock no lo
+            # tiene, basta con ajustar el atributo socket_timeout.
+            if callable(getattr(api_pool, 'set_timeout', None)):
+                api_pool.set_timeout(timeout)
+            else:
+                api_pool.socket_timeout = timeout
             return api_pool.get_api()
         except MikroTikConnectionError:
             raise
+        except MikroTikTimeoutError:
+            raise
         except Exception as e:
-            # Lanzamos nuestra excepción personalizada de dominio
-            raise MikroTikConnectionError(f"No se pudo conectar al router {self.router.nombre}: {str(e)}")
+            # El detalle técnico (str(e)) queda SOLO en el registro;
+            # la respuesta lleva un mensaje genérico en español
+            # (ver api_mikrotik/exceptions.py).
+            if _es_timeout(e):
+                logger.exception(
+                    "Tiempo de espera agotado con el router %s", self.router.nombre
+                )
+                raise MikroTikTimeoutError() from e
+            logger.exception(
+                "No se pudo conectar al router %s", self.router.nombre
+            )
+            raise MikroTikConnectionError(
+                f"No se pudo conectar al router {self.router.nombre}. "
+                "Revisa que esté encendido, con el servicio api-ssl "
+                "habilitado y con los datos de conexión correctos."
+            ) from e
 
     def _simular_operacion(self, mensaje):
         """Método auxiliar para simular operaciones"""
@@ -96,9 +145,9 @@ class MikroTikBaseService:
                 "version": info.get('version'),
                 "uptime": info.get('uptime'),
             }
-        except Exception as e:
+        except Exception:
             logger.exception("No se pudo verificar la conexión con MikroTik")
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": "No se pudo conectar al router."}
 
     def ping_desde_router(self, destino, count=4):
         """Ejecuta ping desde RouterOS hacia una IP y devuelve el resultado bruto.
@@ -139,10 +188,11 @@ class MikroTikBaseService:
                     "versión de RouterOS-api."
                 ),
             }
-        except RouterOsApiError as exc:
-            return {"status": "error", "message": str(exc)}
+        except RouterOsApiError:
+            logger.exception("Error de RouterOS ejecutando ping en %s", destino)
+            return {"status": "error", "message": "El router rechazó el ping."}
         except ValueError:
             return {"status": "error", "message": "La dirección IP de destino no es válida."}
-        except Exception as e:
+        except Exception:
             logger.exception("Error inesperado ejecutando ping en MikroTik")
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": "No se pudo ejecutar el ping en el router."}
