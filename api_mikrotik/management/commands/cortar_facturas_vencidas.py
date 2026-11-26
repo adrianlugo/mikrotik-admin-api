@@ -1,9 +1,13 @@
+import logging
 from datetime import date
 
 from django.core.management.base import BaseCommand
 
 from api_mikrotik.models import Factura
 from api_mikrotik.services import PPPoEService
+
+
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
@@ -39,40 +43,27 @@ class Command(BaseCommand):
         perfil_comprobado = {}
 
         for factura in facturas:
-            cliente = factura.cliente
-            servicio = PPPoEService(cliente.router)
-
-            if cliente.estado != 'suspendido':
-                if cliente.router_id not in perfil_comprobado:
-                    perfil_comprobado[cliente.router_id] = self._perfil_corte_listo(
-                        servicio, options['crear_perfil_corte']
-                    )
-                if perfil_comprobado[cliente.router_id] is not True:
-                    fallos.append(
-                        f"Factura {factura.id} ({cliente.usuario_pppoe}): "
-                        f"{perfil_comprobado[cliente.router_id]}"
-                    )
-                    continue
-                resultado = servicio.suspender_usuario_pppoe(
-                    usuario_pppoe=cliente.usuario_pppoe,
-                    perfil_corte='Perfil_Corte',
+            # Un fallo en UNA factura ya no mata el comando: se registra
+            # el fallo y se sigue con las demás. El mensaje del fallo es
+            # genérico en español; el detalle técnico (la traza) queda
+            # solo en el registro, nunca incrustado en la lista de fallos.
+            try:
+                suspendido, marcado, fallo = self._procesar_factura(
+                    factura, perfil_comprobado, options['crear_perfil_corte']
                 )
-                if resultado.get('status') != 'success':
-                    # No se marca la factura: el cliente sigue activo en el
-                    # router y la factura seguiría pendiente para el próximo
-                    # intento, en vez de quedar vencida sin estar cortado.
-                    fallos.append(
-                        f"Factura {factura.id} ({cliente.usuario_pppoe}): "
-                        f"{resultado.get('message')}"
-                    )
-                    continue
-                cliente.estado = 'suspendido'
-                cliente.save(update_fields=['estado'])
-                suspendidos += 1
-
-            factura.estado = 'vencida'
-            factura.save(update_fields=['estado', 'actualizado_en'])
-            marcadas += 1
+            except Exception:
+                logger.exception("Fallo procesando la factura %s", factura.id)
+                fallos.append(
+                    f"Factura {factura.id} ({factura.cliente.usuario_pppoe}): "
+                    "no se pudo procesar por un error inesperado. Revisa el "
+                    "registro del servidor."
+                )
+                continue
+            if fallo:
+                fallos.append(fallo)
+                continue
+            suspendidos += suspendido
+            marcadas += marcado
 
         for fallo in fallos:
             self.stdout.write(self.style.WARNING(f'FALLO: {fallo}'))
@@ -86,13 +77,62 @@ class Command(BaseCommand):
                 'y vuelve a ejecutar el comando cuando el router esté bien.'
             ))
 
+    def _procesar_factura(self, factura, perfil_comprobado, crear_perfil_corte):
+        """Procesa una factura. Devuelve (suspendido, marcado, fallo).
+
+        ``fallo`` es el mensaje para la lista de fallos (o None si todo
+        fue bien). Si la suspensión falla, la factura NO se marca y
+        queda pendiente para el próximo intento.
+        """
+        cliente = factura.cliente
+        servicio = PPPoEService(cliente.router)
+
+        if cliente.estado != 'suspendido':
+            if cliente.router_id not in perfil_comprobado:
+                perfil_comprobado[cliente.router_id] = self._perfil_corte_listo(
+                    servicio, crear_perfil_corte
+                )
+            if perfil_comprobado[cliente.router_id] is not True:
+                return 0, 0, (
+                    f"Factura {factura.id} ({cliente.usuario_pppoe}): "
+                    f"{perfil_comprobado[cliente.router_id]}"
+                )
+            resultado = servicio.suspender_usuario_pppoe(
+                usuario_pppoe=cliente.usuario_pppoe,
+                perfil_corte='Perfil_Corte',
+            )
+            if resultado.get('status') != 'success':
+                # No se marca la factura: el cliente sigue activo en el
+                # router y la factura seguiría pendiente para el próximo
+                # intento, en vez de quedar vencida sin estar cortado.
+                # El mensaje del servicio es genérico en español (ver
+                # services/pppoe.py); si trajera detalle técnico, el
+                # fallo seguiría sin incluir trazas ni rutas internas.
+                return 0, 0, (
+                    f"Factura {factura.id} ({cliente.usuario_pppoe}): "
+                    f"{resultado.get('message') or 'no se pudo suspender al cliente en el router.'}"
+                )
+            cliente.estado = 'suspendido'
+            cliente.save(update_fields=['estado'])
+            suspendido = 1
+        else:
+            suspendido = 0
+
+        factura.estado = 'vencida'
+        factura.save(update_fields=['estado', 'actualizado_en'])
+        return suspendido, 1, None
+
     def _perfil_corte_listo(self, servicio, crear_si_falta):
         """True si Perfil_Corte existe (o se acaba de crear); si no, el motivo."""
         try:
             if servicio.existe_perfil('Perfil_Corte'):
                 return True
-        except Exception as exc:
-            return f"no se pudo comprobar si existe Perfil_Corte: {exc}"
+        except Exception:
+            logger.exception(
+                "No se pudo comprobar si existe Perfil_Corte en el router %s",
+                servicio.router.nombre,
+            )
+            return "no se pudo comprobar si existe Perfil_Corte en el router."
         if not crear_si_falta:
             return (
                 "el perfil 'Perfil_Corte' no existe en el router "
@@ -101,5 +141,5 @@ class Command(BaseCommand):
             )
         resultado = servicio.crear_perfil_corte()
         if resultado.get('status') != 'success':
-            return f"no se pudo crear Perfil_Corte: {resultado.get('message')}"
+            return "no se pudo crear Perfil_Corte en el router."
         return True
