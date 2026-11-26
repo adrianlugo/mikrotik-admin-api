@@ -99,3 +99,18 @@ class RouterViewSet(viewsets.ModelViewSet):
         router = self.get_object()
         pools = PPPoEService(router).listar_pools()
         return Response({'router': router.nombre, 'total': len(pools), 'pools': pools})
+
+    @extend_schema(summary="Listar colas simples del router para la cola padre", tags=['Routers MikroTik'])
+    @action(detail=True, methods=['get'], url_path='colas')
+    def colas(self, request, pk=None):
+        """Desplegable de cola padre al crear o editar un plan.
+
+        Devuelve las colas simples de /queue/simple de este router con su
+        nombre, target, max-limit y parent. La web muestra nombre +
+        max-limit/target y guarda solo el nombre en
+        PlanVelocidad.cola_padre. Si no se elige ninguna, la API genera
+        una cola padre llamada Plan-{nombre_perfil} al crear el plan.
+        """
+        router = self.get_object()
+        colas = TrafficService(router).listar_colas_resumen()
+        return Response({'router': router.nombre, 'total': len(colas), 'colas': colas})

@@ -5,7 +5,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from api_mikrotik.utils import convertir_rate_limit_a_mbps
 
 from api_mikrotik.models import ClientePPPoE, PlanVelocidad, Router
-from api_mikrotik.services import PPPoEService
+from api_mikrotik.services import PPPoEService, TrafficService
 from api_mikrotik.views import ClientePPPoEViewSet, RouterViewSet
 
 
@@ -31,6 +31,7 @@ class FakeApi:
         self.secrets = FakeResource([])
         self.addresses = FakeResource([])
         self.pools = FakeResource([])
+        self.queues = FakeResource([])
         self.resources = {}
 
     def get_resource(self, path):
@@ -42,6 +43,8 @@ class FakeApi:
             return self.addresses
         if path == '/ip/pool':
             return self.pools
+        if path == '/queue/simple':
+            return self.queues
         return self.resources.setdefault(path, FakeResource([]))
 
 
@@ -265,6 +268,60 @@ class DireccionesYPoolsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['total'], 1)
         self.assertEqual(response.data['pools'][0]['nombre'], 'pool-pppoe')
+
+
+class ColasTests(TestCase):
+    """Listado de solo lectura para el desplegable de cola padre al crear
+    o editar un plan. La cola padre sigue siendo opcional: vacía, la API
+    genera Plan-{nombre_perfil} al crear el plan."""
+
+    def setUp(self):
+        self.router = Router.objects.create(
+            nombre='Pruebas', ip_address='192.0.2.1', usuario='api', password=''
+        )
+        self.fake_api = FakeApi()
+        self.fake_api.queues = FakeResource([
+            {'name': 'Plan-3mb', 'target': '10.0.0.0/24', 'max-limit': '3M/3M',
+             'parent': 'none', 'disabled': 'false'},
+            {'name': 'Cola-Total', 'target': '', 'max-limit': '50M/50M',
+             'parent': 'none', 'disabled': 'false'},
+        ])
+        self.user = get_user_model().objects.create_superuser(
+            username='admin.pruebas',
+            email='admin@example.com',
+password=''
+        )
+
+    @patch.object(TrafficService, '_obtener_conexion_real')
+    def test_listar_colas_resumen_devuelve_nombre_y_limite(self, obtener_conexion_real):
+        obtener_conexion_real.return_value = self.fake_api
+
+        colas = TrafficService(self.router).listar_colas_resumen()
+
+        # El desplegable muestra nombre + max-limit/target, pero guarda
+        # solo el nombre en PlanVelocidad.cola_padre.
+        self.assertEqual(colas, [
+            {'nombre': 'Plan-3mb', 'target': '10.0.0.0/24', 'max-limit': '3M/3M',
+             'parent': 'none', 'deshabilitada': 'false'},
+            {'nombre': 'Cola-Total', 'target': '', 'max-limit': '50M/50M',
+             'parent': 'none', 'deshabilitada': 'false'},
+        ])
+
+    @patch.object(TrafficService, 'listar_colas_resumen')
+    def test_endpoint_colas(self, listar_colas):
+        listar_colas.return_value = [
+            {'nombre': 'Plan-3mb', 'target': '10.0.0.0/24', 'max-limit': '3M/3M',
+             'parent': 'none', 'deshabilitada': 'false'},
+        ]
+        request = APIRequestFactory().get(f'/api/routers/{self.router.id}/colas/')
+        force_authenticate(request, user=self.user)
+
+        response = RouterViewSet.as_view({'get': 'colas'})(request, pk=self.router.id)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['total'], 1)
+        self.assertEqual(response.data['colas'][0]['nombre'], 'Plan-3mb')
+        self.assertEqual(response.data['colas'][0]['max-limit'], '3M/3M')
 
 
 class ActivePPPoEEndpointTests(TestCase):
