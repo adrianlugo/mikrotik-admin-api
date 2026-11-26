@@ -1261,6 +1261,37 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/routers/{id}/colas/:
+    get:
+      operationId: routers_colas_retrieve
+      description: |-
+        Desplegable de cola padre al crear o editar un plan.
+
+        Devuelve las colas simples de /queue/simple de este router con su
+        nombre, target, max-limit y parent. La web muestra nombre +
+        max-limit/target y guarda solo el nombre en
+        PlanVelocidad.cola_padre. Si no se elige ninguna, la API genera
+        una cola padre llamada Plan-{nombre_perfil} al crear el plan.
+      summary: Listar colas simples del router para la cola padre
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this router.
+        required: true
+      tags:
+      - Routers MikroTik
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Router'
+          description: ''
   /api/routers/{id}/consumo/:
     get:
       operationId: routers_consumo_retrieve
@@ -1311,12 +1342,71 @@ paths:
               schema:
                 $ref: '#/components/schemas/Router'
           description: ''
+  /api/routers/{id}/direcciones-ip/:
+    get:
+      operationId: routers_direcciones_ip_retrieve
+      description: |-
+        Desplegable de local-address al crear o editar un plan.
+
+        Devuelve las direcciones de /ip/address de este router con su
+        interfaz. La web muestra interfaz + IP (por ejemplo el loopback),
+        pero guarda solo la IP en PlanVelocidad.direccion_local, que es lo
+        que pide el campo local-address del perfil PPPoE.
+      summary: Listar direcciones IP del router para el local-address
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this router.
+        required: true
+      tags:
+      - Routers MikroTik
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Router'
+          description: ''
   /api/routers/{id}/estado/:
     get:
       operationId: routers_estado_retrieve
       description: Devuelve configuración local, resultado de conexión y cantidades
         de planes y clientes asociados.
       summary: Consultar estado del router
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this router.
+        required: true
+      tags:
+      - Routers MikroTik
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Router'
+          description: ''
+  /api/routers/{id}/pools/:
+    get:
+      operationId: routers_pools_retrieve
+      description: |-
+        Desplegable de remote-address al crear o editar un plan.
+
+        Devuelve los pools de /ip/pool de este router con su nombre y sus
+        rangos. La web guarda el nombre del pool elegido en
+        PlanVelocidad.pool_remoto.
+      summary: Listar pools del router para el remote-address
       parameters:
       - in: path
         name: id
@@ -1918,6 +2008,14 @@ components:
           type: string
           description: Nombre de la cola padre en MikroTik
           maxLength: 100
+        direccion_local:
+          type: string
+          format: ipv4
+          description: IP local del perfil PPPoE (local-address), normalmente la IP del loopback de ese router.
+        pool_remoto:
+          type: string
+          description: Nombre del pool del perfil PPPoE (remote-address), por ejemplo pool-pppoe.
+          maxLength: 100
         subida_mbps:
           type: integer
           maximum: 9223372036854775807
@@ -1994,6 +2092,14 @@ components:
         cola_padre:
           type: string
           description: Nombre de la cola padre en MikroTik
+          maxLength: 100
+        direccion_local:
+          type: string
+          format: ipv4
+          description: IP local del perfil PPPoE (local-address), normalmente la IP del loopback de ese router.
+        pool_remoto:
+          type: string
+          description: Nombre del pool del perfil PPPoE (remote-address), por ejemplo pool-pppoe.
           maxLength: 100
         subida_mbps:
           type: integer

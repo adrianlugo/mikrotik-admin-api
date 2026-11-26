@@ -81,5 +81,10 @@ API (`PATCH /api/routers/{id}/`) o en el admin.
 - Expiración/rotación del token del portal y del token de autenticación de
   DRF, y paginación/throttling: están fuera del alcance de este arreglo y
   siguen pendientes según la revisión del 2026-11-25.
-- Regenerar el esquema OpenAPI tras cambiar los serializers:
-  `python manage.py spectacular --file api-schema.yaml --validate`.
+- El esquema OpenAPI (`api-schema.yaml`) incluye los endpoints
+  `direcciones-ip`, `pools` y `colas` y los campos `direccion_local` y
+  `pool_remoto`. Ojo al regenerarlo con
+  `python manage.py spectacular --file api-schema.yaml --validate`: la
+  regeneración pierde las descripciones detalladas del esquema actual,
+  que no están en las anotaciones del código; revisa el diff antes de
+  guardarlo.
