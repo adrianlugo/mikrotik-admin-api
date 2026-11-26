@@ -22,9 +22,10 @@ La operación compara los siguientes recursos de RouterOS con sus registros de D
 - Crea o actualiza planes locales encontrados en `/ppp/profile`.
 - Crea o actualiza clientes locales encontrados en `/ppp/secret`.
 - Convierte `rate-limit` de RouterOS a velocidades de subida y bajada en Mbps.
-- Asocia secretos con un plan local según el nombre del profile.
-- Guarda el `local-address` y el `remote-address` del profile en el plan
-  (`direccion_local` y `pool_remoto`) cuando el router los tiene definidos.
+- Asocia secretos con un plan local según el nombre del profile. Si el profile del secreto no existe como plan en Django, crea uno con 5 Mbps de subida y 10 Mbps de bajada por defecto.
+- Guarda el `local-address` y el `remote-address` del profile en el plan (`direccion_local` y `pool_remoto`) cuando el router los tiene definidos.
+
+La sincronización solo cubre profiles y secrets: no sincroniza colas simples, leases DHCP ni reservas ARP.
 
 ### Django hacia MikroTik
 
@@ -43,12 +44,13 @@ La operación compara los siguientes recursos de RouterOS con sus registros de D
 - Los nombres de usuarios se normalizan a minúsculas.
 - El usuario Django y el secreto RouterOS deben usar el mismo nombre para considerarse el mismo registro.
 - Los cambios se envían dentro de una transacción local. Un error de RouterOS puede detener la operación, aunque algunas llamadas ya realizadas al router no puedan revertirse automáticamente.
-- El modo simulación impide ejecutar la sincronización real.
+- El modo simulación impide ejecutar la sincronización real. El modo simulación está fijado a `false` en `core/settings.py` (los servicios hablan con el router real), así que en la práctica este caso no se da salvo que se cambie ese ajuste en el código.
 
 ## Formato de respuesta
 
 ```json
 {
+  "status": "success",
   "message": "Sincronización bi-direccional finalizada",
   "details": {
     "planes_creados": 1,
@@ -60,6 +62,8 @@ La operación compara los siguientes recursos de RouterOS con sus registros de D
   }
 }
 ```
+
+Si falla, devuelve `{"status": "error", "message": "..."}` con código 502.
 
 ## Formato de velocidad
 
