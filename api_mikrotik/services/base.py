@@ -101,7 +101,14 @@ class MikroTikBaseService:
             return {"status": "error", "message": str(e)}
 
     def ping_desde_router(self, destino, count=4):
-        """Ejecuta ping desde RouterOS hacia una IP y devuelve el resultado bruto."""
+        """Ejecuta ping desde RouterOS hacia una IP y devuelve el resultado bruto.
+
+        Si el ping no se ejecuta (la librería rechaza la llamada, el router
+        no responde o el resultado viene vacío), devuelve ``status: error``:
+        antes el fallo del recurso binario devolvía un ``success`` inventado
+        con un mensaje de aviso, y la web mostraba el ping como exitoso
+        sin haberse ejecutado.
+        """
         if self.simulado:
             return {"status": "success", "destino": destino, "resultado": ["modo simulación: ping exitoso"]}
         try:
@@ -110,35 +117,28 @@ class MikroTikBaseService:
 
             ipaddress.ip_address(destino)
             api = self._obtener_conexion_real()
-            
-            # En la librería routeros_api, los recursos binarios como /ping 
-            # se invocan pasando los argumentos posicionales o llamando a la acción con la tupla/parámetros aceptados.
-            # Probamos usando el método de ejecución directa por path de la API:
             ping_resource = api.get_binary_resource('/ping')
-            
-            # El recurso binario de ping en routeros_api suele aceptar el argumento como 'address' pero posicional o mediante .call con la estructura interna
             resultado = ping_resource.call(address=destino, count=str(count))
-            
-            return {"status": "success", "destino": destino, "resultado": resultado}
-        except TypeError:
-            # Si el recurso binario sigue rechazando el argumento con nombre, 
-            # ejecutamos el comando mediante una sentencia de consola genérica si el wrapper lo soporta,
-            # o capturamos el error devolviendo una simulación limpia o un mensaje descriptivo.
-            try:
-                api = self._obtener_conexion_real()
-                # Alternativa usando el parser de comandos de la API
-                list_ping = api.get_resource('/ping')
-                resultado = list_ping.call(address=destino)
-                return {"status": "success", "destino": destino, "resultado": resultado}
-            except Exception as inner_e:
-                logger.error(f"Error alternativo en ping: {inner_e}")
-                # Como alternativa segura para evitar el 502 si la librería bloquea el binario de ping,
-                # devolvemos un éxito simulado controlado o el error exacto sin romper la app.
+            if resultado is None or (isinstance(resultado, (list, tuple)) and not resultado):
                 return {
-                    "status": "success", 
-                    "destino": destino, 
-                    "resultado": [{"message": f"Comando ejecutado hacia {destino} (Aviso: la librería binaria requiere ajuste de versión)"}]
+                    "status": "error",
+                    "destino": destino,
+                    "message": "El router no devolvió ningún resultado para el ping.",
                 }
+            return {"status": "success", "destino": destino, "resultado": resultado}
+        except TypeError as exc:
+            # La librería no aceptó la llamada al recurso binario: el ping
+            # NO se ejecutó, así que es un error, no un éxito simulado.
+            logger.error("La librería RouterOS rechazó el ping hacia %s: %s", destino, exc)
+            return {
+                "status": "error",
+                "destino": destino,
+                "message": (
+                    "No se pudo ejecutar el ping en el router: la librería "
+                    "RouterOS rechazó la llamada al recurso /ping. Revisa la "
+                    "versión de RouterOS-api."
+                ),
+            }
         except RouterOsApiError as exc:
             return {"status": "error", "message": str(exc)}
         except ValueError:
