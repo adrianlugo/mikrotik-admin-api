@@ -240,7 +240,9 @@ class PlanSinColaPadreTests(TestCase):
                 'cola_padre': 'Cola-Total',
             }, format='json')
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+        # El fallo del router es 502 con el formato único, ya no 400.
+        self.assertEqual(response.data['codigo'], 'mikrotik_error')
         self.assertEqual(FakeTraffic.llamadas, [])
         self.assertFalse(PlanVelocidad.objects.filter(nombre_perfil='10M').exists())
 
