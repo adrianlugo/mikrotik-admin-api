@@ -134,6 +134,28 @@ La sincronización (`POST /api/routers/{id}/sincronizar/`) también lee el
 router y los guarda en el plan, así que un perfil creado a mano en WinBox se
 importa completo. Ver [Sincronización bidireccional](docs/synchronization.md).
 
+## Cola padre: desplegable
+
+La cola padre de un plan (`cola_padre`) se elige en un desplegable, no se
+escribe a mano. La API ofrece el listado de solo lectura:
+
+```http
+GET /api/routers/{id}/colas/
+```
+
+Devuelve las colas simples de `/queue/simple` con nombre, target, max-limit
+y parent; el desplegable muestra nombre + max-limit/target y guarda **solo
+el nombre**. Si se deja vacío, la API genera una cola padre llamada
+`Plan-{nombre_perfil}` al crear el plan.
+
+> **Pendiente de decisión (no cambiar sin avisar):** hoy
+> `asegurar_cola_padre()` le pone a la cola padre el mismo límite del plan
+> (por ejemplo, `Plan-3mb` en 3 MB), lo que caparía el total de todos los
+> usuarios de ese plan a 3 MB. El límite de la cola padre debería ser el del
+> internet que suministra el proveedor, y aún no está decidido si habrá una
+> única cola padre para todo el ISP o una por plan con un total asignado.
+> Este cambio no toca esa lógica: el select solo elige la cola.
+
 ## Autenticación
 
 Todos los endpoints operativos requieren autenticación. Solicita un token:
@@ -157,7 +179,7 @@ El portal `/api/portal/{token}/` es la única ruta pública actual y devuelve da
 
 | Área | Operaciones principales |
 |---|---|
-| Routers | CRUD, prueba de conexión, estado, sincronización, consumo, leases DHCP, y listados de direcciones IP y pools para los desplegables de planes. |
+| Routers | CRUD, prueba de conexión, estado, sincronización, consumo, leases DHCP, y listados de direcciones IP, pools y colas simples para los desplegables de planes. |
 | Planes | CRUD y sincronización con profile/cola padre. |
 | PPPoE | CRUD, sesión activa, suspensión, ping y desconexión. |
 | DHCP/IP fija | CRUD, lease DHCP, ARP fijo, cola y reparación. |

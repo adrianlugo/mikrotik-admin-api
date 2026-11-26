@@ -36,6 +36,21 @@ class TrafficService(MikroTikBaseService):
             logger.exception("No se pudo sincronizar la cola padre")
             return {"status": "error", "message": str(e)}
 
+    def listar_colas_resumen(self):
+        """Colas simples resumidas para el desplegable de cola padre.
+
+        Devuelve nombre, target, max-limit, parent y si está deshabilitada.
+        La web muestra nombre + max-limit/target y guarda solo el nombre en
+        PlanVelocidad.cola_padre.
+        """
+        return [{
+            'nombre': cola.get('name'),
+            'target': cola.get('target'),
+            'max-limit': cola.get('max-limit'),
+            'parent': cola.get('parent'),
+            'deshabilitada': cola.get('disabled', 'false'),
+        } for cola in self.listar_colas()]
+
     def monitor_consumo(self):
         colas = self.listar_colas()
         resultado = []

@@ -42,6 +42,7 @@ Roles disponibles:
 | `GET` | `/api/routers/{id}/dhcp-leases/` | Lista leases DHCP dinámicos y estáticos. |
 | `GET` | `/api/routers/{id}/direcciones-ip/` | Lista direcciones IP del router (interfaz + IP) para elegir el local-address del perfil. |
 | `GET` | `/api/routers/{id}/pools/` | Lista pools del router (nombre + rangos) para elegir el remote-address del perfil. |
+| `GET` | `/api/routers/{id}/colas/` | Lista colas simples del router (nombre, target, max-limit, parent) para elegir la cola padre del plan. |
 | `POST` | `/api/routers/{id}/reparar-colas/` | Repara las colas de clientes DHCP/IP fija. |
 
 ## Planes
@@ -63,6 +64,21 @@ La dirección local es distinta en cada router, por eso se guarda por plan (y
 cada plan pertenece a un solo router). Los desplegables se alimentan de
 `GET /api/routers/{id}/direcciones-ip/` y `GET /api/routers/{id}/pools/`: el
 de direcciones muestra interfaz + IP, pero guarda solo la IP.
+
+La cola padre (`cola_padre`) también es un desplegable, alimentado por
+`GET /api/routers/{id}/colas/`, que muestra nombre + max-limit/target de las
+colas simples del router y guarda solo el nombre. Es opcional: si se deja
+vacía, la API genera una cola padre llamada `Plan-{nombre_perfil}` al crear
+el plan.
+
+> **Pendiente de decisión (no cambiar sin avisar):** hoy
+> `asegurar_cola_padre()` le pone a la cola padre el mismo límite del plan
+> (por ejemplo, `Plan-3mb` en 3 MB). Eso caparía el total de todos los
+> usuarios de ese plan a 3 MB, cuando el límite de la cola padre debería ser
+> el del internet que suministra el proveedor. Tampoco está decidido si habrá
+> una única cola padre para todo el ISP o una por plan con un total asignado.
+> Este PR no cambia esa lógica: el select solo elige la cola, el límite
+> sigue siendo el del plan hasta que Adrián decida.
 
 ## Clientes PPPoE
 
