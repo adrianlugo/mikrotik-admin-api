@@ -133,7 +133,7 @@ explícitamente con `crear_cola_padre=true` al crear o editar el plan
 | `GET` | `/api/clientes-pppoe/{id}/` | Consulta un cliente. |
 | `PUT/PATCH` | `/api/clientes-pppoe/{id}/` | Actualiza localmente y en RouterOS. |
 | `DELETE` | `/api/clientes-pppoe/{id}/` | Elimina secreto y registro local. |
-| `GET` | `/api/clientes-pppoe/activos/` | Lista conexiones PPP activas. Consulta las sesiones PPP de todos los routers que tienen clientes PPPoE registrados. Devuelve `routers`, `total_conectados`, `conexiones` y `errores`. Si no hay routers con clientes, devuelve 400. Si ningún router responde, devuelve 502 (antes devolvía 200 con 0 conectados). Si solo falla alguno, devuelve 200 con los que respondieron y el fallo en `errores`. |
+| `GET` | `/api/clientes-pppoe/activos/` | Lista conexiones PPP activas. Consulta las sesiones PPP de todos los routers que tienen clientes PPPoE registrados. Devuelve `routers`, `total_conectados`, `conexiones` y `errores`. Si no hay routers con clientes, devuelve 200 con listas vacías (es un estado vacío, no un error). Si ningún router responde, devuelve 502 (antes devolvía 200 con 0 conectados). Si solo falla alguno, devuelve 200 con los que respondieron y el fallo en `errores`. |
 | `POST` | `/api/clientes-pppoe/{id}/cambiar-estado/` | Activa o suspende el cliente. Recibe `{"estado": "activo"}` o `{"estado": "suspendido"}`; al suspender lo mueve al perfil `Perfil_Corte` en RouterOS. Si ese perfil no existe en el router, devuelve error y el cliente sigue activo (no cambia nada). |
 | `POST` | `/api/clientes-pppoe/{id}/ping/` | Ejecuta ping desde el router hacia la IP indicada (`{"ip": "..."}`) o la IP de antena guardada. Si el ping no se ejecuta, devuelve error (502), nunca un éxito inventado. |
 | `POST` | `/api/clientes-pppoe/{id}/patear/` | Desconecta las sesiones PPP activas del usuario. |
@@ -188,7 +188,83 @@ python manage.py respaldar_bd
 
 Para programarlo todos los días y para el respaldo, ver [Despliegue](deployment.md).
 
-`respaldar_bd` copia `db.sqlite3` a `backups/` con fecha y hora y conserva las 7 últimas copias (`--destino` y `--conservar` cambian la carpeta y la cantidad). Solo sirve para SQLite; con PostgreSQL el respaldo es con `pg_dump`.
+`respaldar_bd` copia `db.sqlite3` a `backups/` con fecha y hora y conserva las 7 últimas copias (`--destino` y `--conservar` cambian la carpeta y la cantidad; `--conservar` debe ser mayor que 0). Solo sirve para SQLite; con PostgreSQL el respaldo es con `pg_dump`.
+
+## Errores
+
+Todas las respuestas de error de la API usan un único formato:
+
+```json
+{"error": "No se pudo conectar al router.", "codigo": "mikrotik_error"}
+```
+
+- `error`: el mensaje que ve el usuario, siempre en español y sin
+  detalles técnicos (sin trazas, sin rutas internas del servidor, sin
+  mensajes crudos de la librería RouterOS). El detalle técnico queda
+  solo en el registro del servidor (`logs/mikrotik-admin-api.log`).
+- `codigo`: una clave estable para que el cliente decida qué mostrar
+  o hacer (por ejemplo, si es `router_sin_respuesta`, avisar de que
+  el router no responde; si es `validacion`, marcar los campos).
+- Las respuestas de validación (400) añaden además `detalles` con el
+  error por campo.
+
+Antes los errores de MikroTik se devolvían como
+`{"mikrotik_error": "..."}`. Ese formato ya no se emite: la web no
+leía esa clave de forma específica (su `api_client.py` recorre
+cualquier diccionario de error y junta sus valores), así que con la
+clave `error` le basta. Para un mensaje limpio en la web, conviene
+preferir `error` e ignorar `codigo` (ver «Coherencia con la web» más
+abajo).
+
+| Código HTTP | `codigo` | Cuándo sale | Qué ve el usuario |
+|---|---|---|---|
+| 400 | `validacion` | Datos inválidos (velocidad 0, puerto no válido, monto negativo, MAC con formato incorrecto...) | El mensaje de validación en español, con `detalles` por campo. |
+| 400 | `registro_duplicado` | Ya existe un registro con esos datos (por ejemplo, mismo usuario PPPoE o misma IP en el router). | «Ya existe un registro con esos datos.» |
+| 400 | `solicitud_invalida` | La petición no es válida (por ejemplo, JSON mal formado). | «La petición no es válida.» |
+| 401 | `no_autenticado` | Sin token, con un token inválido o con un token caducado. | «La autenticación falló. Revisa el token e inicia sesión de nuevo.» (o «El token caducó. Pide uno nuevo con POST /api/token/.») |
+| 403 | `sin_permiso` | El usuario no tiene permiso para esa acción (por ejemplo, rotar el token del portal sin ser administrador). | «No tienes permiso para realizar esta acción.» |
+| 404 | `no_encontrado` | El router, cliente o recurso no existe; también el enlace del portal con un token inexistente o con formato no UUID. | «No se encontró el recurso solicitado.» |
+| 409 | `borrado_protegido` | No se puede eliminar porque hay registros que dependen de él (por ejemplo, un router con clientes). | «No se puede eliminar porque hay registros que dependen de él.» |
+| 429 | `demasiadas_peticiones` | Se superó el throttling (100/hora sin autenticar, 1000/hora por usuario). | «Demasiadas peticiones. Espera un momento e inténtalo de nuevo.» |
+| 500 | `error_interno` | Error no previsto del servidor. | «Ocurrió un error interno. Revisa el registro del servidor.» |
+| 502 | `mikrotik_error` | El router no responde, rechaza la operación o devuelve una respuesta incompleta. Los datos locales se conservan o se revierten según la operación. | «No se pudo conectar al router.» o el mensaje concreto del fallo. |
+| 502 | `respuesta_router_invalida` | RouterOS devolvió una respuesta sin un campo esperado. | «El router devolvió una respuesta incompleta.» |
+| 502 | `credencial_no_descifrable` | Una credencial guardada está cifrada y `MIKROTIK_CREDENTIALS_KEY` no está configurada o es otra. | «No se pudo descifrar una credencial guardada...» |
+| 503 | `router_sin_respuesta` | El router no respondió dentro de `MIKROTIK_TIMEOUT_SEGUNDOS` (10 s por defecto). | «El router no responde a tiempo. Revisa que esté encendido y con conexión, e inténtalo de nuevo.» |
+
+Casos particulares:
+
+- `GET /api/clientes-pppoe/activos/` sin routers con clientes devuelve
+  200 con listas vacías (es un estado vacío, no un error). Si ningún
+  router responde, devuelve 502 con `errores` por router.
+- `POST /api/routers/{id}/reparar-colas/` devuelve 200 con `errores`
+  por cliente si falla solo alguna cola (`status: "partial"`) y 502 si
+  fallan todas (`status: "error"`).
+- `DELETE /api/clientes-pppoe/{id}/` devuelve 200 con un mensaje (no
+  el 204 habitual de DELETE) porque la web espera ese formato.
+- El esquema OpenAPI (`api-schema.yaml`) no enumera estos códigos por
+  endpoint: el formato de error es global (lo aplica el manejador de
+  `api_mikrotik/exceptions.py` a todas las respuestas), así que no se
+  regeneró el esquema por este cambio; esta sección es la referencia.
+
+### Coherencia con la web
+
+La web (`mikrotik_web`, rama `fix/manejo-errores-web-2026-11-26`, aún
+sin mezclar) lee los errores de la API en `api_client.py` recorriendo
+cualquier diccionario de error y juntando sus valores en un mensaje
+legible, así que el formato único `{"error", "codigo"}` le funciona
+tal cual: el usuario ve el mensaje en español. Verificado por lectura
+del código de la web (copia local en `/tmp/merge-web-2026-11-26`, rama
+`fix/preparacion-produccion-2026-11-26`): la web no lee la clave
+`mikrotik_error` de forma específica en ningún sitio, así que no se
+rompe nada al dejar de emitirla. Dos mejoras pequeñas pendientes en
+la web, no bloqueantes: preferir la clave `error` y no mostrar
+`codigo` (hoy lo juntaría como «error: ... | codigo: ...»), y
+aprovechar `detalles` en los 400 de validación para marcar los campos
+en vez de mostrar el diccionario entero. En `reparar-colas`, la web
+solo comprueba `status == "error"`: un `status: "partial"` (falló
+alguna cola) lo trataría como éxito; conviene que la web muestre un
+aviso con los fallos de `errores` cuando el estado es `partial`.
 
 ## Convenciones HTTP
 
