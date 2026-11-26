@@ -111,6 +111,12 @@ Después abre:
 | `MIKROTIK_SSL_VERIFY` / `MIKROTIK_SSL_VERIFY_HOSTNAME` | `true` | Verificación del certificado API-SSL. Solo `false` con certificados autofirmados en laboratorio. |
 | `MIKROTIK_ALLOW_INSECURE_API` | `false` | Permite el puerto 8728 sin cifrar. Solo laboratorio. |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | Orígenes permitidos para CORS. La web (`mikrotik_web`) no usa CORS: llama a la API desde el servidor, no desde el navegador. |
+| `DJANGO_LOG_FILE` | `logs/mikrotik-admin-api.log` | Ruta del archivo de registro. |
+| `DJANGO_TOKEN_EXPIRY_DAYS` | `0` (sin caducidad) | Días que dura el token DRF. Con `30`, los tokens de más de 30 días dejan de valer. |
+| `DJANGO_PAGE_SIZE` | `100` | Elementos por página en los listados. |
+| `DJANGO_THROTTLE_ANON` / `DJANGO_THROTTLE_USER` | `100/hour` / `1000/hour` | Límites de peticiones sin autenticar y por usuario. |
+| `DJANGO_HTTPS_EXTERNO` | `false` | Solo `true` cuando la API se expone fuera de la PC con HTTPS (servidor). En local debe seguir en `false`. |
+| `DJANGO_DETRAS_DE_PROXY` | `false` | `true` solo si hay un proxy inverso (nginx) delante y `DJANGO_HTTPS_EXTERNO=true`. |
 
 El modo simulación (`MIKROTIK_SIMULATION_MODE`) está fijado a `false` en `core/settings.py` y no tiene variable de entorno: los servicios hablan con el router real. En los tests se usan mocks, no ese modo.
 
@@ -165,9 +171,11 @@ La cola padre de un plan (`cola_padre`) se elige en un desplegable, no se escrib
 GET /api/routers/{id}/colas/
 ```
 
-Devuelve las colas simples de `/queue/simple` con nombre, target, max-limit y parent; el desplegable muestra nombre + max-limit/target y guarda **solo el nombre**. Si se deja vacío, la API genera una cola padre llamada `Plan-{nombre_perfil}` al crear el plan.
+Devuelve las colas simples de `/queue/simple` con nombre, target, max-limit y parent; el desplegable muestra nombre + max-limit/target y guarda **solo el nombre**. Si se deja vacío, el plan queda **sin cola padre (none)** y la API no genera ninguna cola. Para crear la cola `Plan-{nombre_perfil}` hay que pedirlo explícitamente con `crear_cola_padre=true` al crear o editar el plan.
 
-> **Pendiente de decisión (no cambiar sin avisar):** hoy `asegurar_cola_padre()` le pone a la cola padre el mismo límite del plan (por ejemplo, `Plan-3mb` en 3 MB), lo que caparía el total de todos los usuarios de ese plan a 3 MB. El límite de la cola padre debería ser el del internet que suministra el proveedor, y aún no está decidido si habrá una única cola padre para todo el ISP o una por plan con un total asignado. El desplegable solo elige la cola; no cambia esa lógica.
+Elegir una cola que ya existe **no toca su límite**: si la creaste a mano en WinBox (por ejemplo, la cola con el total que da el proveedor), conserva su `max-limit` tal cual. Si se crea una cola nueva, su límite es el del plan y la respuesta avisa de que eso capa el total del plan a la velocidad del plan.
+
+> **Pendiente de decisión (no cambiar sin avisar):** todavía no está decidido el total que da el proveedor ni si habrá una única cola padre para todo el ISP o una por plan con un total asignado. La API no inventa ningún total: cuando Adrián decida, habrá que poner ese límite a la cola padre a mano en WinBox (o elegir la cola del proveedor en el desplegable).
 
 ## Autenticación y permisos
 
@@ -192,9 +200,11 @@ Roles (ver `api_mikrotik/permissions.py`):
 - **Técnico:** lectura en todo, y edición solo donde está permitido: clientes PPPoE y clientes DHCP/IP fija (`permite_tecnico_edicion = True`). No puede crear ni modificar planes, routers, facturas ni pagos.
 - **Solo lectura:** solo peticiones `GET`.
 
-El portal `/api/portal/{token}/` es la única ruta pública actual y devuelve solo `cliente`, `estado`, `servicio` y `mensaje`. No incluya el token del portal en enlaces públicos sin medir exposición. El token del portal no tiene expiración ni rotación automática: eso sigue pendiente.
+El portal `/api/portal/{token}/` es la única ruta pública actual y devuelve solo `cliente`, `estado`, `servicio` y `mensaje`. No incluya el token del portal en enlaces públicos sin medir exposición. El token del portal no caduca solo, pero se puede rotar a mano con `POST /api/clientes-pppoe/{id}/rotar-portal-token/` (solo administradores): genera uno nuevo e invalida el anterior.
 
-La API **no pagina**: no hay `DEFAULT_PAGINATION_CLASS` configurado, así que los listados devuelven la lista completa, sin `{"results": [...]}`.
+Para cerrar sesión y que el token DRF deje de valer: `POST /api/token/revocar/` con el token. La expiración automática del token es opcional (`DJANGO_TOKEN_EXPIRY_DAYS`, 0 = desactivada).
+
+Los listados **sí paginan**: devuelven `{"count": N, "next": ..., "previous": ..., "results": [...]}` con 100 por página por defecto (`?page=2`, `?page_size=50`, máximo 200). La web ya tolera esa forma (su `get_list()` lee `"results"`), pero solo lee la primera página: con más de 100 registros en una lista, la web no vería el resto. Además hay throttling: 100 peticiones/hora sin autenticar y 1000/hora por usuario (ajustable en el `.env`).
 
 ## Catálogo resumido
 
@@ -231,9 +241,21 @@ Para suspender clientes con facturas vencidas:
 python manage.py cortar_facturas_vencidas
 ```
 
-Debes programarlo mediante cron, el Administrador de Tareas de Windows u otro planificador real. La ejecución marca como `vencida` cada factura `pendiente` con `fecha_vencimiento` pasada y, si el cliente no está ya suspendido, lo mueve en RouterOS al perfil `Perfil_Corte` y lo marca `suspendido` en Django.
+Debes programarlo mediante cron, el Administrador de Tareas de Windows u otro planificador real (ver [Despliegue](docs/deployment.md), con los comandos de `schtasks` para la PC). La ejecución primero suspende en RouterOS a cada cliente con factura `pendiente` vencida y **solo si la suspensión funciona** marca la factura como `vencida` y al cliente como `suspendido` en Django. Si la suspensión falla, la factura no se marca y queda pendiente para el próximo intento, y el comando avisa del fallo.
 
-**Importante:** el perfil `Perfil_Corte` tiene que existir en el router (creado a mano en WinBox). Si no existe, la suspensión en RouterOS falla y el cliente queda como `activo` en Django aunque su factura ya esté `vencida`.
+**Importante:** el perfil `Perfil_Corte` tiene que existir en el router (creado a mano en WinBox). Si no existe, no se marca nada y el comando avisa. Para crearlo, hazlo en WinBox (`/ppp/profile`, con velocidad casi nula) o ejecuta el comando con `--crear-perfil-corte`, que lo crea con `rate-limit 1k/1k`.
+
+## Respaldo de la base de datos y logs
+
+La base es SQLite (`db.sqlite3`, un solo archivo). Para respaldarla:
+
+```bash
+python manage.py respaldar_bd
+```
+
+Guarda una copia con fecha y hora en `backups/` y conserva las 7 últimas (`--destino` y `--conservar` cambian la carpeta y la cantidad). Conviene programarlo todos los días junto con el corte (ver [Despliegue](docs/deployment.md)).
+
+La API escribe sus registros en `logs/mikrotik-admin-api.log` (además de la consola); ahí quedan los errores de conexión con los routers. La ruta se cambia con `DJANGO_LOG_FILE`.
 
 ## Pruebas y validación
 
@@ -244,7 +266,7 @@ python manage.py test api_mikrotik
 python manage.py spectacular --file api-schema.yaml --validate
 ```
 
-La suite tiene 29 tests. Nota: regenerar el esquema con `spectacular` pierde las descripciones detalladas que tiene el `api-schema.yaml` actual (fueron escritas en el esquema y no están en las anotaciones del código), así que si lo regeneras, revisa el diff antes de guardarlo.
+La suite tiene 55 tests (29 anteriores + 26 nuevos de la preparación para producción, en `api_mikrotik/tests/test_produccion.py`). Nota: regenerar el esquema con `spectacular` pierde las descripciones detalladas que tiene el `api-schema.yaml` actual (fueron escritas en el esquema y no están en las anotaciones del código), así que si lo regeneras, revisa el diff antes de guardarlo. En CI (GitHub Actions, `.github/workflows/ci.yml`) se corre `check`, `makemigrations --check`, los tests y la validación del esquema en cada PR.
 
 ## Documentación técnica
 
@@ -252,6 +274,7 @@ La suite tiene 29 tests. Nota: regenerar el esquema con `spectacular` pierde las
 - [Arquitectura y modelo operativo](docs/architecture.md)
 - [Sincronización bidireccional](docs/synchronization.md)
 - [Seguridad: variables de entorno, cifrado de credenciales y API-SSL](docs/security.md)
+- [Despliegue y operación: uso en local en la PC, respaldo, corte programado y producción opcional](docs/deployment.md)
 
 ## Convenciones de desarrollo
 
@@ -262,6 +285,10 @@ La suite tiene 29 tests. Nota: regenerar el esquema con `spectacular` pierde las
 - Las credenciales y datos sensibles no deben almacenarse en el código.
 - Realizar cambios pequeños, probables de revertir y documentados con commits descriptivos.
 
+## Uso en local y producción
+
+Hoy la API y la web corren **en local en la PC** con `runserver`: eso no cambia y no hace falta montar ningún servidor. Para cuando haya un servidor Linux, [Despliegue](docs/deployment.md) explica el paso a producción como opción (gunicorn, systemd o Docker, PostgreSQL opcional, HTTPS) sin imponerlo. El respaldo y el corte programado también están explicados ahí, primero para la PC (Programador de tareas de Windows) y después para Linux (cron).
+
 ## Seguridad antes de producción
 
 Antes de publicar el servicio públicamente:
@@ -270,8 +297,8 @@ Antes de publicar el servicio públicamente:
 2. Limita hosts permitidos, CORS y orígenes aceptados.
 3. Usa HTTPS y API-SSL en el router (puerto 8729); las contraseñas de routers y clientes se cifran con `MIKROTIK_CREDENTIALS_KEY` (ver [Seguridad](docs/security.md)).
 4. Protege las credenciales RouterOS y PostgreSQL.
-5. Activa copias de seguridad y registro de auditoría (la auditoría completa aún no existe: ver [Arquitectura](docs/architecture.md)).
-6. Prueba en un entorno aislado y valida cada operación contra el RouterOS real.
-7. Añade reintentos, límites de frecuencia y monitoreo.
+5. Activa copias de seguridad (`python manage.py respaldar_bd`, ver arriba) y registro de auditoría (la auditoría completa aún no existe: ver [Arquitectura](docs/architecture.md)).
+6. Prueba en un entorno aislado y valida cada operación contra el RouterOS real (hasta hoy todo se validó con mocks).
+7. La API ya tiene límites de frecuencia (throttling) y paginación; los reintentos y el monitoreo completo siguen pendientes.
 
 La funcionalidad existe para operar y desarrollar; todavía no constituye una declaración de preparación comercial completa.

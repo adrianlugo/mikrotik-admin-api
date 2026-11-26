@@ -1,0 +1,29 @@
+# Ejemplo de servicio systemd para correr la API en un servidor Linux.
+#
+# ESTO ES OPCIONAL Y SOLO PARA CUANDO HAYA UN SERVIDOR. Hoy Adrián corre
+# la API en local en su PC con runserver y NO necesita este archivo.
+# Cuando monte un servidor Linux, copiaría este archivo a
+# /etc/systemd/system/mikrotik-admin-api.service, adaptaría las rutas y el
+# usuario, y lo activaría con:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now mikrotik-admin-api
+# Ver docs/deployment.md (apartado «Producción (opcional, para más adelante)»).
+
+[Unit]
+Description=API MikroTik Admin (gunicorn)
+After=network.target
+
+[Service]
+# Usuario y carpeta del servidor: ADAPTAR a la instalación real.
+User=mikrotik
+Group=mikrotik
+WorkingDirectory=/opt/mikrotik-admin-api
+# Variables de entorno (SECRET_KEY, MIKROTIK_CREDENTIALS_KEY, ...) en un
+# archivo aparte con permisos restringidos, nunca en este archivo.
+EnvironmentFile=/opt/mikrotik-admin-api/.env
+ExecStart=/opt/mikrotik-admin-api/venv/bin/gunicorn core.wsgi:application --bind 127.0.0.1:8000 --workers 2 --timeout 60
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -8,3 +8,7 @@ db.sqlite3
 !.env.example
 venv/
 *.log
+# Generados en local: no se suben al repositorio.
+logs/
+staticfiles/
+backups/

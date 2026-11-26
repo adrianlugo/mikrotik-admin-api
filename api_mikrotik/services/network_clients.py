@@ -1,5 +1,6 @@
 import logging
 from .base import MikroTikBaseService
+from api_mikrotik.exceptions import MikroTikConnectionError
 
 logger = logging.getLogger(__name__)
 
@@ -102,14 +103,24 @@ class NetworkClientService(MikroTikBaseService):
             return {"status": "error", "message": str(e)}
 
     def listar_dhcp_leases(self):
+        """Leases DHCP del router (/ip/dhcp-server/lease).
+
+        Si el router no responde, lanza MikroTikConnectionError (la vista
+        lo convierte en 502). Antes devolvía [] y la API respondía 200 con
+        0 leases, como si no hubiera ninguno.
+        """
         if self.simulado:
             return []
         try:
             api = self._obtener_conexion_real()
             return api.get_resource('/ip/dhcp-server/lease').get()
+        except MikroTikConnectionError:
+            raise
         except Exception as e:
             logger.exception("No se pudieron consultar leases DHCP")
-            return []
+            raise MikroTikConnectionError(
+                f"No se pudieron consultar los leases DHCP del router {self.router.nombre}: {e}"
+            ) from e
 
     def reparar_usuarios_red(self):
         from api_mikrotik.models import ClienteRed

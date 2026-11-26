@@ -83,7 +83,11 @@ La API administrará únicamente elementos dinámicos y reversibles:
 
 Esta separación evita exponer a operadores la configuración crítica del router. Los elementos fijos pueden respaldarse y recuperarse independientemente de los clientes gestionados por Django.
 
-Cada plan representa el perfil PPPoE y una cola padre RouterOS. Los clientes PPPoE no necesitan una cola simple adicional; DHCP e IP fija sí requieren cola hijo vinculada al padre de su plan.
+Cada plan representa el perfil PPPoE y, si tiene, una cola padre RouterOS.
+La cola padre es opcional: vacía significa sin cola padre (none). Los
+clientes PPPoE no necesitan una cola simple adicional; DHCP e IP fija sí
+requieren cola hijo vinculada al padre de su plan (si el plan no tiene
+cola padre, la cola hijo se crea sin `parent`).
 
 ## Recursos administrados
 
@@ -109,7 +113,14 @@ Internet global
 
 Una cola padre representa el límite agregado de un plan. Una cola hija representa el consumo y límites individuales.
 
-> **Pendiente de decisión:** hoy `asegurar_cola_padre()` le pone a la cola padre el mismo límite del plan, lo que caparía el total de todos los usuarios de ese plan a ese límite. El límite de la cola padre debería ser el del internet que suministra el proveedor, y aún no está decidido si habrá una única cola padre para todo el ISP o una por plan con un total asignado.
+> **Pendiente de decisión:** una cola padre existente nunca se toca: la
+> API no cambia su `max-limit`. Si se crea una cola nueva (solo a petición
+> explícita con `crear_cola_padre=true`), su límite es el del plan, lo que
+> capa el total de los usuarios de ese plan. El límite de la cola padre
+> debería ser el del internet que suministra el proveedor, y aún no está
+> decidido si habrá una única cola padre para todo el ISP o una por plan
+> con un total asignado. Tampoco se ha decidido ese total: la API no
+> inventa ninguno.
 
 ## Sincronización
 
@@ -150,6 +161,22 @@ Ya implementado:
 7. Cifrado Fernet de contraseñas de routers y clientes PPPoE en reposo.
 8. Servicios RouterOS separados por dominio (`services/pppoe.py`, `network_clients.py`, `traffic.py`, `base.py`).
 9. Campos `direccion_local` y `pool_remoto` en el plan, con desplegables de direcciones, pools y colas por router.
+10. Cola padre segura: una cola existente no se toca, vacío es sin cola
+    padre (none) y la cola `Plan-{perfil}` solo se crea a petición
+    explícita.
+11. Sincronización sin contraseña débil ni planes inventados, y sin
+    importar perfiles de sistema.
+12. Corte por vencimiento que suspende antes de marcar y exige que exista
+    `Perfil_Corte` (o lo crea con `--crear-perfil-corte`).
+13. Errores honestos del router (502 en vez de listas vacías o 0),
+    revocación del token DRF, rotación del token del portal, expiración
+    opcional del token, paginación y throttling.
+14. Despliegue ligero para local (runserver, respaldo con
+    `respaldar_bd`, logs en archivo) y producción como opción documentada
+    (gunicorn, systemd/Docker, PostgreSQL opcional) en
+    [Despliegue](deployment.md).
+15. CI en GitHub Actions (`check` + migraciones + tests + esquema OpenAPI
+    en cada PR).
 
 Pendiente para consolidar:
 
@@ -158,8 +185,9 @@ Pendiente para consolidar:
 3. Programar y supervisar tareas automáticas.
 4. Añadir auditoría completa de cambios manuales y automáticos.
 5. Implementar métricas, alertas y panel web separado.
-6. Rotación y expiración de tokens (DRF y portal) y paginación/throttling.
-7. Decidir el límite de la cola padre (ver arriba).
+6. Decidir el límite de la cola padre (ver arriba) y el total del proveedor.
+7. Probar contra hardware real: hasta hoy todo se validó con mocks, nunca
+   contra un router real con clientes de verdad.
 
 ## Límites del modelo comercial futuro
 

@@ -272,8 +272,8 @@ class DireccionesYPoolsTests(TestCase):
 
 class ColasTests(TestCase):
     """Listado de solo lectura para el desplegable de cola padre al crear
-    o editar un plan. La cola padre sigue siendo opcional: vacía, la API
-    genera Plan-{nombre_perfil} al crear el plan."""
+    o editar un plan. La cola padre sigue siendo opcional: vacía, el plan
+    queda sin cola padre (none) y la API no genera ninguna cola."""
 
     def setUp(self):
         self.router = Router.objects.create(

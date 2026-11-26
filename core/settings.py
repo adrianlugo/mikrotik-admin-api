@@ -158,6 +158,61 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = 'static/'
+# Carpeta donde `collectstatic` reúne los archivos estáticos para servirlos
+# con un servidor de producción (ver docs/deployment.md). En local con
+# runserver no hace falta ejecutar collectstatic.
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Registro de actividad (logs). En local se escribe en logs/ dentro del
+# proyecto; en producción se puede cambiar la ruta con DJANGO_LOG_FILE.
+# No incluye contraseñas ni tokens: los servicios registran solo mensajes
+# de error genéricos.
+os.makedirs(BASE_DIR / 'logs', exist_ok=True)
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'simple': {'format': '{levelname} {asctime} {name}: {message}', 'style': '{'},
+    },
+    'handlers': {
+        'consola': {'class': 'logging.StreamHandler', 'formatter': 'simple'},
+        'archivo': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.environ.get('DJANGO_LOG_FILE', str(BASE_DIR / 'logs' / 'mikrotik-admin-api.log')),
+            'maxBytes': 5 * 1024 * 1024,
+            'backupCount': 5,
+            'formatter': 'simple',
+            'encoding': 'utf-8',
+        },
+    },
+    'root': {'handlers': ['consola', 'archivo'], 'level': 'INFO'},
+}
+
+# Endurecimiento HTTPS: SOLO cuando la API se expone fuera de loopback
+# (un servidor con dominio y HTTPS). En local (127.0.0.1) debe seguir en
+# 'false', o el navegador y la web dejarían de funcionar. Actívalo con
+# DJANGO_HTTPS_EXTERNO=true cuando montes el servidor (ver docs/deployment.md
+# y docs/security.md). Detrás de un proxy inverso (nginx) añade también
+# DJANGO_DETRAS_DE_PROXY=true para que Django confíe en X-Forwarded-Proto.
+HTTPS_EXTERNO = os.environ.get('DJANGO_HTTPS_EXTERNO', 'false').strip().lower() in ('1', 'true', 'yes', 'on')
+if HTTPS_EXTERNO:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_BROWSER_XSS_FILTER = True
+    X_FRAME_OPTIONS = 'DENY'
+    if os.environ.get('DJANGO_DETRAS_DE_PROXY', 'false').strip().lower() in ('1', 'true', 'yes', 'on'):
+        SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Expiración del token DRF (en días). 0 = desactivada (comportamiento
+# actual: el token no caduca; se revoca a mano con POST /api/token/revocar/).
+# Si se activa (por ejemplo 30), los tokens más viejos dejan de valer y hay
+# que pedir uno nuevo con POST /api/token/. Ver docs/security.md.
+TOKEN_EXPIRY_DAYS = int(os.environ.get('DJANGO_TOKEN_EXPIRY_DAYS', '0') or 0)
 
 
 # Email
@@ -185,7 +240,9 @@ REST_FRAMEWORK = {
     'EXCEPTION_HANDLER': 'api_mikrotik.exceptions.custom_exception_handler',
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',
+        # Como TokenAuthentication, pero respeta TOKEN_EXPIRY_DAYS cuando
+        # está activado (ver api_mikrotik/authentication.py).
+        'api_mikrotik.authentication.TokenExpirableAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
@@ -195,6 +252,25 @@ REST_FRAMEWORK = {
         'django_filters.rest_framework.DjangoFilterBackend',
         'rest_framework.filters.SearchFilter',
     ],
+    # Paginación: los listados devuelven {"count": N, "next": ..., "previous":
+    # ..., "results": [...]} con 100 por página por defecto (se puede pedir
+    # otra con ?page_size=, hasta 200; ver api_mikrotik/pagination.py).
+    # La web ya tolera esa forma: su get_list() lee la clave "results"
+    # (ver mikrotik_web/api_client.py). Ojo: la web solo lee la primera
+    # página, así que con más de 100 registros en una lista la web no vería
+    # el resto; es el límite actual y está documentado en docs/api.md.
+    'DEFAULT_PAGINATION_CLASS': 'api_mikrotik.pagination.PaginacionAPI',
+    'PAGE_SIZE': int(os.environ.get('DJANGO_PAGE_SIZE', '100') or 100),
+    # Throttling: frena el abuso y los intentos de fuerza bruta sin molestar
+    # al uso normal. Se puede ajustar con DJANGO_THROTTLE_ANON/USER.
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': os.environ.get('DJANGO_THROTTLE_ANON', '100/hour'),
+        'user': os.environ.get('DJANGO_THROTTLE_USER', '1000/hour'),
+    },
 }
 
 SPECTACULAR_SETTINGS = {

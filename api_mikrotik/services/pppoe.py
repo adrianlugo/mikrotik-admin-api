@@ -1,9 +1,14 @@
 import logging
 from django.db import transaction
 from .base import MikroTikBaseService
+from ..exceptions import MikroTikConnectionError
 from ..utils import convertir_rate_limit_a_mbps
 
 logger = logging.getLogger(__name__)
+
+# Perfiles de sistema de RouterOS: existen en todos los routers y NO son
+# planes del ISP. La sincronización no debe importarlos como planes.
+PERFILES_SISTEMA = {'default', 'default-encryption'}
 
 
 def _parametros_perfil(subida, bajada, cola_padre='', direccion_local=None, pool_remoto=None):
@@ -43,6 +48,12 @@ class PPPoEService(MikroTikBaseService):
             return {"status": "error", "message": "No se pudo establecer comunicación con el router MikroTik."}
 
     def obtener_conexiones_activas(self):
+        """Nombres de las sesiones PPP activas (/ppp/active).
+
+        Si el router no responde, lanza MikroTikConnectionError: la vista
+        lo convierte en 502. Antes devolvía [] y la API respondía 200 con
+        0 conectados, como si nadie estuviera conectado.
+        """
         if self.simulado:
             return ["juan.perez", "maria.lopez"]
 
@@ -51,9 +62,13 @@ class PPPoEService(MikroTikBaseService):
             active_ppp = api.get_resource('/ppp/active')
             datos = active_ppp.get()
             return [conexion.get('name') for conexion in datos if conexion.get('name')]
+        except MikroTikConnectionError:
+            raise
         except Exception as e:
             logger.error(f"Error leyendo usuarios activos: {e}")
-            return []
+            raise MikroTikConnectionError(
+                f"No se pudieron consultar las sesiones activas del router {self.router.nombre}: {e}"
+            ) from e
 
     def actualizar_usuario_pppoe(self, usuario_antiguo, nuevo_usuario, nuevo_password, nuevo_plan_perfil):
         if self.simulado:
@@ -107,6 +122,23 @@ class PPPoEService(MikroTikBaseService):
 
         from routeros_api.exceptions import RouterOsApiError
         try:
+            # El perfil de corte tiene que existir en el router: si no
+            # existe, RouterOS rechazaría el cambio y el cliente quedaría
+            # activo. Se falla con un mensaje claro antes de tocar nada.
+            try:
+                perfil_existe = self.existe_perfil(perfil_corte)
+            except Exception as exc:
+                return {"status": "error", "message": f"No se pudo comprobar si existe el perfil '{perfil_corte}': {exc}"}
+            if not perfil_existe:
+                return {
+                    "status": "error",
+                    "message": (
+                        f"El perfil '{perfil_corte}' no existe en el router "
+                        f"{self.router.nombre}. Créalo en WinBox (/ppp/profile) "
+                        "o ejecuta `python manage.py cortar_facturas_vencidas "
+                        "--crear-perfil-corte`. No se suspendió a nadie."
+                    ),
+                }
             api = self._obtener_conexion_real()
             list_ppp = api.get_resource('/ppp/secret')
 
@@ -150,6 +182,25 @@ class PPPoEService(MikroTikBaseService):
                 active_ppp.remove(id=self._obtener_id_router(active_record[0]))
         except Exception as e:
             logger.warning(f"No se pudo forzar la desconexión del usuario {usuario_pppoe}: {e}")
+
+    def existe_perfil(self, nombre_perfil):
+        """True si existe un /ppp/profile con ese nombre en el router."""
+        if self.simulado:
+            return True
+        api = self._obtener_conexion_real()
+        perfiles = api.get_resource('/ppp/profile').get()
+        return any(p.get('name') == nombre_perfil for p in perfiles)
+
+    def crear_perfil_corte(self, nombre='Perfil_Corte'):
+        """Crea el perfil de corte en el router, con velocidad casi nula.
+
+        Es el perfil al que se mueve a los clientes suspendidos por falta
+        de pago. Se crea solo cuando se pide explícitamente (opción
+        ``--crear-perfil-corte`` de cortar_facturas_vencidas): por defecto
+        el corte falla con un mensaje claro si el perfil no existe, para
+        no inventar un perfil en el router sin que Adrián lo sepa.
+        """
+        return self.crear_perfil_velocidad(nombre, '1k', '1k')
 
     def crear_perfil_velocidad(self, nombre_perfil, subida, bajada, cola_padre='', direccion_local=None, pool_remoto=None):
         """Crea o actualiza el /ppp/profile del plan en el router.
@@ -202,9 +253,13 @@ class PPPoEService(MikroTikBaseService):
                     'deshabilitada': fila.get('disabled', 'false'),
                 })
             return resultado
+        except MikroTikConnectionError:
+            raise
         except Exception as e:
             logger.exception("No se pudieron consultar las direcciones IP del router")
-            return []
+            raise MikroTikConnectionError(
+                f"No se pudieron consultar las direcciones IP del router {self.router.nombre}: {e}"
+            ) from e
 
     def listar_pools(self):
         """Pools de direcciones del router (/ip/pool) para elegir el remote-address.
@@ -222,9 +277,13 @@ class PPPoEService(MikroTikBaseService):
                 {'nombre': fila.get('name'), 'rangos': fila.get('ranges')}
                 for fila in filas if fila.get('name')
             ]
+        except MikroTikConnectionError:
+            raise
         except Exception as e:
             logger.exception("No se pudieron consultar los pools del router")
-            return []
+            raise MikroTikConnectionError(
+                f"No se pudieron consultar los pools del router {self.router.nombre}: {e}"
+            ) from e
 
     def sincronizar_bidireccional(self):
         from api_mikrotik.models import PlanVelocidad, ClientePPPoE
@@ -244,9 +303,17 @@ class PPPoEService(MikroTikBaseService):
 
             created_plans = updated_plans = created_clients = updated_clients = 0
             created_secrets = updated_secrets = 0
+            saltados_sin_password = []
+            saltados_sin_plan = []
+            perfiles_sistema_saltados = []
 
             with transaction.atomic():
                 for nombre, perfil in perfiles_por_nombre.items():
+                    # Los perfiles de sistema (default, ...) no son planes
+                    # del ISP: no se importan como PlanVelocidad.
+                    if nombre in PERFILES_SISTEMA:
+                        perfiles_sistema_saltados.append(nombre)
+                        continue
                     subida, bajada = convertir_rate_limit_a_mbps(perfil.get('rate-limit', ''))
                     defaults = {'subida_mbps': subida, 'bajada_mbps': bajada}
                     direccion_local = (perfil.get('local-address') or '').strip()
@@ -269,13 +336,31 @@ class PPPoEService(MikroTikBaseService):
                     usuario = (secreto.get('name') or '').strip().lower()
                     if not usuario:
                         continue
-                    perfil_nombre = secreto.get('profile', 'default')
-                    plan, _ = PlanVelocidad.objects.get_or_create(
-                        router=self.router,
-                        nombre_perfil=perfil_nombre,
-                        defaults={'subida_mbps': 5, 'bajada_mbps': 10},
-                    )
-                    password = secreto.get('password') or '123456'
+                    perfil_nombre = (secreto.get('profile') or '').strip() or 'default'
+                    if perfil_nombre in PERFILES_SISTEMA:
+                        saltados_sin_plan.append(
+                            f"{usuario} (perfil de sistema '{perfil_nombre}')"
+                        )
+                        continue
+                    # Sin contraseña en el router no se importa el secreto:
+                    # antes se creaba el cliente con la contraseña débil
+                    # '123456'. Se salta y se avisa en la respuesta.
+                    password = (secreto.get('password') or '').strip()
+                    if not password:
+                        saltados_sin_password.append(usuario)
+                        continue
+                    # Sin plan no se inventa uno de 5/10 Mbps: el secreto
+                    # se salta y se avisa. El plan tiene que existir en
+                    # Django o venir en /ppp/profile del router (el bucle
+                    # anterior ya importó esos perfiles como planes).
+                    plan = PlanVelocidad.objects.filter(
+                        router=self.router, nombre_perfil=perfil_nombre
+                    ).first()
+                    if plan is None:
+                        saltados_sin_plan.append(
+                            f"{usuario} (perfil '{perfil_nombre}' sin plan)"
+                        )
+                        continue
                     cliente, created = ClientePPPoE.objects.update_or_create(
                         usuario_pppoe=usuario,
                         defaults={
@@ -292,9 +377,12 @@ class PPPoEService(MikroTikBaseService):
                         updated_clients += 1
 
                 for plan in PlanVelocidad.objects.filter(router=self.router):
+                    if plan.nombre_perfil in PERFILES_SISTEMA:
+                        continue
                     perfil_router = perfiles_por_nombre.get(plan.nombre_perfil)
                     parametros = _parametros_perfil(
                         f"{plan.subida_mbps}M", f"{plan.bajada_mbps}M",
+                        cola_padre=plan.cola_padre,
                         direccion_local=plan.direccion_local,
                         pool_remoto=plan.pool_remoto,
                     )
@@ -319,6 +407,24 @@ class PPPoEService(MikroTikBaseService):
                         secretos_resource.add(name=cliente.usuario_pppoe, **parametros)
                         created_secrets += 1
 
+            advertencias = []
+            if saltados_sin_password:
+                advertencias.append(
+                    "Secretos sin contraseña en el router, no importados: "
+                    + ", ".join(saltados_sin_password)
+                    + ". Ponles una contraseña en WinBox y vuelve a sincronizar."
+                )
+            if saltados_sin_plan:
+                advertencias.append(
+                    "Secretos sin plan (perfil inexistente o de sistema), no importados: "
+                    + ", ".join(saltados_sin_plan)
+                    + ". Crea el plan primero o cambia el profile del secreto en WinBox."
+                )
+            if perfiles_sistema_saltados:
+                advertencias.append(
+                    "Perfiles de sistema no importados como planes: "
+                    + ", ".join(sorted(set(perfiles_sistema_saltados))) + "."
+                )
             return {
                 "status": "success",
                 "message": "Sincronización bi-direccional finalizada",
@@ -329,6 +435,10 @@ class PPPoEService(MikroTikBaseService):
                     "clientes_actualizados": updated_clients,
                     "secretos_creados": created_secrets,
                     "secretos_actualizados": updated_secrets,
+                    "secretos_saltados_sin_password": saltados_sin_password,
+                    "secretos_saltados_sin_plan": saltados_sin_plan,
+                    "perfiles_sistema_saltados": sorted(set(perfiles_sistema_saltados)),
+                    "advertencias": advertencias,
                 },
             }
         except Exception as e:

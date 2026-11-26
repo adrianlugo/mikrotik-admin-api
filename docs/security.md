@@ -25,6 +25,42 @@ Ver `.env.example`. Las importantes para seguridad son:
 - `MIKROTIK_SSL_VERIFY` / `MIKROTIK_SSL_VERIFY_HOSTNAME`: `true` por defecto.
   Ponerlas en `false` solo con certificados autofirmados en laboratorio.
 - `MIKROTIK_ALLOW_INSECURE_API`: `false` por defecto. Solo laboratorio.
+- `DJANGO_TOKEN_EXPIRY_DAYS`: días que dura el token DRF (`0` = no caduca,
+  que es el valor por defecto). Ejemplo: `30`.
+- `DJANGO_HTTPS_EXTERNO`: `false` por defecto. Solo se pone en `true`
+  cuando la API se expone fuera de la PC con HTTPS (ver «HTTPS y cabeceras
+  seguras» más abajo). En local debe seguir en `false`.
+- `DJANGO_DETRAS_DE_PROXY`: `true` solo si hay un proxy inverso (nginx)
+  delante y `DJANGO_HTTPS_EXTERNO=true`.
+
+## Tokens: revocación, rotación y expiración
+
+- **Revocar el token DRF (cerrar sesión):** `POST /api/token/revocar/`
+  con el token en `Authorization`. Elimina el token y cierra la sesión;
+  después hay que pedir uno nuevo con `POST /api/token/`. Antes no había
+  forma de cerrar sesión: el token seguía valiendo aunque se cerrara la
+  sesión en la web.
+- **Expiración opcional:** con `DJANGO_TOKEN_EXPIRY_DAYS=30`, los tokens
+  con más de 30 días dejan de valer (se eliminan y la API responde 401).
+  Por defecto está desactivada (0) para no romper el uso actual: la web
+  guarda el token en sesión y Adrián lo usa en local. Si se activa, todos
+  los operadores tendrán que pedir un token nuevo cuando caduque el suyo.
+- **Rotar el token del portal:** `POST
+  /api/clientes-pppoe/{id}/rotar-portal-token/` (solo administradores).
+  Genera un `portal_token` nuevo e invalida el anterior: el enlace viejo
+  del portal deja de funcionar. El token nuevo se devuelve una sola vez
+  en la respuesta. El portal no tiene expiración automática: si un enlace
+  se filtra, se rota a mano con este endpoint.
+
+## HTTPS y cabeceras seguras (solo para el servidor, no para local)
+
+En local la API escucha en 127.0.0.1 y `DJANGO_HTTPS_EXTERNO` debe seguir
+en `false`. Cuando la API se monte en un servidor con dominio y HTTPS, se
+pone `DJANGO_HTTPS_EXTERNO=true` en el `.env` y Django activa: redirección
+a HTTPS, cookies de sesión y CSRF seguras, HSTS (1 año) y cabeceras
+`X-Content-Type-Options`, `X-XSS-Protection` y `X-Frame-Options: DENY`.
+Con nginx delante, además `DJANGO_DETRAS_DE_PROXY=true` para que Django
+confíe en `X-Forwarded-Proto`.
 
 ## Rotar la SECRET_KEY (obligatorio)
 
@@ -78,13 +114,13 @@ API (`PATCH /api/routers/{id}/`) o en el admin.
 
 - Rotación de la `SECRET_KEY` (arriba) y de las credenciales de los routers
   si alguna vez estuvieron expuestas.
-- Expiración/rotación del token del portal y del token de autenticación de
-  DRF, y paginación/throttling: están fuera del alcance de este arreglo y
-  siguen pendientes según la revisión del 2026-11-25.
 - El esquema OpenAPI (`api-schema.yaml`) incluye los endpoints
-  `direcciones-ip`, `pools` y `colas` y los campos `direccion_local` y
-  `pool_remoto`. Ojo al regenerarlo con
-  `python manage.py spectacular --file api-schema.yaml --validate`: la
-  regeneración pierde las descripciones detalladas del esquema actual,
-  que no están en las anotaciones del código; revisa el diff antes de
-  guardarlo.
+  `direcciones-ip`, `pools`, `colas` y `token/revocar`, el campo
+  `direccion_local`, `pool_remoto` y `crear_cola_padre` en planes. Ojo al
+  regenerarlo con `python manage.py spectacular --file api-schema.yaml
+  --validate`: la regeneración pierde las descripciones detalladas del
+  esquema actual, que no están en las anotaciones del código; revisa el
+  diff antes de guardarlo. Por ese motivo, en el cambio de preparación
+  para producción (2026-11-26) el esquema se actualizó a mano (respuestas
+  paginadas, parámetros `page`/`page_size` y los endpoints nuevos), sin
+  regenerarlo entero.
