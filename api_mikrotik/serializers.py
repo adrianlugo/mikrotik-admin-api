@@ -50,12 +50,21 @@ class ClientePPPoESerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         """
-        Validaciones cruzadas (opcional). 
-        Por ejemplo, evitar que se guarde un cliente activo si el enrutador asignado está inactivo.
+        Validaciones cruzadas. Evita guardar un cliente activo en un
+        router marcado como fuera de servicio, y evita asociar un plan
+        de un router a un cliente de otro router (antes solo lo validaba
+        ClienteRedSerializer; en PPPoE se podía crear el cliente con el
+        plan de otro router y el secreto quedaba en el perfil equivocado).
+        En actualizaciones parciales se usan los valores ya guardados
+        para los campos que no vienen en la petición.
         """
-        router = data.get('router')
-        estado = data.get('estado')
-        # Ejemplo: Si tu modelo Router tiene un campo 'activo'
+        router = data.get('router') or getattr(self.instance, 'router', None)
+        plan = data.get('plan') or getattr(self.instance, 'plan', None)
+        estado = data.get('estado') or getattr(self.instance, 'estado', None)
+        if router and plan and plan.router_id != router.id:
+            raise serializers.ValidationError({
+                "plan": "El plan seleccionado pertenece a otro router."
+            })
         if router and hasattr(router, 'activo') and not router.activo and estado == 'activo':
             raise serializers.ValidationError({
                 "router": "No se puede activar un cliente en un router que está marcado como fuera de servicio."
@@ -66,6 +75,21 @@ class PlanVelocidadSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlanVelocidad
         fields = '__all__'
+        # cola_padre es el nombre de una cola simple que ya existe en el
+        # router (se elige en el desplegable de GET /api/routers/{id}/colas/).
+        # Vacía significa «sin cola padre» (none): la API ya NO genera una
+        # cola Plan-{nombre_perfil}. Si se quiere crear esa cola, se pide
+        # explícitamente con crear_cola_padre=true al crear o editar el plan
+        # (ver PlanVelocidadViewSet); su límite será el del plan y eso capa
+        # el total del plan (ver docs/api.md, «Cola padre»).
+        extra_kwargs = {
+            'cola_padre': {
+                'help_text': (
+                    'Nombre de una cola simple que ya existe en el router. '
+                    'Vacía = sin cola padre (none); la API no genera ninguna.'
+                ),
+            },
+        }
 
 
 class FacturaSerializer(serializers.ModelSerializer):
