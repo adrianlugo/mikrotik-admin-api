@@ -8,6 +8,10 @@ django-cors-headers==4.9.0
 django-filter==26.2
 djangorestframework==3.18.3
 drf-spectacular==0.30.0
+# Servidor de producción (gunicorn). Solo hace falta si la API se monta en
+# un servidor Linux; en local en la PC se sigue usando runserver y no hay
+# que arrancar gunicorn. Ver docs/deployment.md.
+gunicorn==23.0.0
 idna==3.20
 inflection==0.5.1
 jsonschema==4.26.0
