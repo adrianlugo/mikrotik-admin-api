@@ -45,7 +45,15 @@ class PlanVelocidad(models.Model):
     """Mapea los Profiles de MikroTik (ej: 10Megas_Plan)"""
     router = models.ForeignKey(Router, on_delete=models.CASCADE, related_name='planes')
     nombre_perfil = models.CharField(max_length=100) # Nombre exacto del Profile en MikroTik
-    cola_padre = models.CharField(max_length=100, blank=True, help_text="Nombre de la cola padre en MikroTik")
+    cola_padre = models.CharField(
+        max_length=100, blank=True,
+        help_text=(
+            "Nombre de una cola simple que ya existe en el router. Vacía = "
+            "sin cola padre (none): la API no genera ninguna cola. Si se "
+            "crea una cola nueva a petición explícita, su límite es el del "
+            "plan y capa el total del plan."
+        ),
+    )
     subida_mbps = models.IntegerField(help_text="Velocidad de subida en Mbps")
     bajada_mbps = models.IntegerField(help_text="Velocidad de bajada en Mbps")
     # Dirección local del perfil PPPoE (local-address): la IP del loopback
