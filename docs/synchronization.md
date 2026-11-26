@@ -23,11 +23,16 @@ La operación compara los siguientes recursos de RouterOS con sus registros de D
 - Crea o actualiza clientes locales encontrados en `/ppp/secret`.
 - Convierte `rate-limit` de RouterOS a velocidades de subida y bajada en Mbps.
 - Asocia secretos con un plan local según el nombre del profile.
+- Guarda el `local-address` y el `remote-address` del profile en el plan
+  (`direccion_local` y `pool_remoto`) cuando el router los tiene definidos.
 
 ### Django hacia MikroTik
 
 - Crea los profiles locales que no existan en el router.
 - Actualiza el `rate-limit` de los profiles existentes.
+- Si el plan tiene `direccion_local` o `pool_remoto`, también crea o
+  actualiza el profile con ese `local-address` y `remote-address`. Si el plan
+  no los tiene, no toca esos campos del perfil que ya existe en el router.
 - Crea los secretos PPP locales que no existan en el router.
 - Actualiza la contraseña, el profile y el servicio `pppoe` de secretos existentes.
 

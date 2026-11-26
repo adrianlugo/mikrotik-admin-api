@@ -94,10 +94,45 @@ Después abre:
 2. Inicia sesión o crea un usuario con rol Administrador.
 3. Registra el router en `/api/routers/` o `/admin/`.
 4. Ejecuta `/api/routers/{id}/verificar-conexion/`.
-5. Crea un plan con velocidades y cola padre.
+5. Crea un plan con velocidades, cola padre y, si el perfil es nuevo, su dirección local (IP del loopback de ese router) y su pool (ver Perfiles PPPoE más abajo).
 6. Da de alta clientes PPPoE, DHCP o IP fija.
 7. Usa la sincronización manual del router para reconciliar recursos existentes.
 8. Consulta activos, leases, colas y consumo desde los endpoints de monitoreo.
+
+## Perfiles PPPoE: dirección local y pool
+
+Cada plan (`PlanVelocidad`) corresponde a un `/ppp/profile` del router y,
+además de la velocidad y la cola padre, puede llevar dos datos opcionales:
+
+- `direccion_local`: la IP local del perfil (`local-address`). Normalmente es
+  la dirección IP del loopback de ese router, por ejemplo `10.1.1.1`.
+- `pool_remoto`: el nombre del pool del que salen las IPs de los clientes
+  (`remote-address`), por ejemplo `pool-pppoe`.
+
+La dirección local es **por router y distinta en cada uno**: el loopback se
+crea en cada MikroTik con su propia IP, así que dos routers no deben compartir
+la misma. Por eso estos campos se guardan en el plan, y cada plan pertenece a
+un solo router. Si el perfil ya existe en el router con su local y su pool, se
+pueden dejar vacíos: la API no toca esos campos y solo sincroniza la velocidad.
+
+Para no escribirlos a mano, la API ofrece dos listados de solo lectura por
+router, pensados como desplegables en la web:
+
+```http
+GET /api/routers/{id}/direcciones-ip/
+GET /api/routers/{id}/pools/
+```
+
+El primero devuelve las direcciones de `/ip/address` con su interfaz; el
+desplegable muestra interfaz + IP (por ejemplo `loopback — 10.1.1.1`), pero se
+guarda **solo la IP**, porque el campo `local-address` del perfil pide una
+dirección IP, no el nombre de la interfaz. El segundo devuelve los pools de
+`/ip/pool` con su nombre y sus rangos; ahí sí se guarda el nombre del pool.
+
+La sincronización (`POST /api/routers/{id}/sincronizar/`) también lee el
+`local-address` y el `remote-address` de los perfiles que ya existen en el
+router y los guarda en el plan, así que un perfil creado a mano en WinBox se
+importa completo. Ver [Sincronización bidireccional](docs/synchronization.md).
 
 ## Autenticación
 
@@ -122,7 +157,7 @@ El portal `/api/portal/{token}/` es la única ruta pública actual y devuelve da
 
 | Área | Operaciones principales |
 |---|---|
-| Routers | CRUD, prueba de conexión, estado, sincronización, consumo y leases DHCP. |
+| Routers | CRUD, prueba de conexión, estado, sincronización, consumo, leases DHCP, y listados de direcciones IP y pools para los desplegables de planes. |
 | Planes | CRUD y sincronización con profile/cola padre. |
 | PPPoE | CRUD, sesión activa, suspensión, ping y desconexión. |
 | DHCP/IP fija | CRUD, lease DHCP, ARP fijo, cola y reparación. |
@@ -137,6 +172,8 @@ La descripción completa, parámetros y respuestas están en [Catálogo de la AP
 POST /api/routers/{id}/verificar-conexion/
 POST /api/routers/{id}/sincronizar/
 GET  /api/routers/{id}/consumo/
+GET  /api/routers/{id}/direcciones-ip/
+GET  /api/routers/{id}/pools/
 POST /api/clientes-pppoe/{id}/ping/
 POST /api/clientes-pppoe/{id}/patear/
 POST /api/clientes-red/{id}/crear-cola/

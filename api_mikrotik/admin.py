@@ -34,9 +34,9 @@ class RouterAdmin(admin.ModelAdmin):
 
 @admin.register(PlanVelocidad)
 class PlanVelocidadAdmin(admin.ModelAdmin):
-    list_display = ('nombre_perfil', 'subida_mbps', 'bajada_mbps', 'router')
+    list_display = ('nombre_perfil', 'subida_mbps', 'bajada_mbps', 'direccion_local', 'pool_remoto', 'router')
     list_filter = ('router',)
-    search_fields = ('nombre_perfil',)
+    search_fields = ('nombre_perfil', 'pool_remoto')
 
 @admin.register(ClientePPPoE)
 class ClientePPPoEAdmin(admin.ModelAdmin):
